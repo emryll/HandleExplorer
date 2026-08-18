@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"unsafe"
 )
 
 type Bitmask uint32
@@ -12,6 +13,32 @@ type Parameter struct {
 	Domain uint8
 	Buffer []byte
 }
+
+//*==========================[ Handle Entry ]=========================
+
+type cHandleEntry struct {
+	FirstSeen  int64
+	LastSeen   int64
+	Params     unsafe.Pointer
+	ParamsSize uint64
+	Handle     uint32
+	Access     uint32
+	Type       uint32
+	Pid        uint32
+}
+
+type HandleEntry struct {
+	FirstSeen  int64
+	LastSeen   int64
+	Handle     uint32
+	Access     uint32
+	Type       uint32
+	Pid        uint32
+	Parameters map[string]Parameter
+}
+
+//*=====================[ Object Access Registry ]========================
+
 type AccessEntry struct {
 	Object uint32 // type enum
 	Name   string // name of object
