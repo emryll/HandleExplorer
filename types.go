@@ -76,3 +76,40 @@ type ObjectAccessKey struct {
 	Pid  uint32
 	Name string
 }
+
+//*============================[ Constants ]================================
+
+const (
+	OBJECT_TYPE_UNKNOWN        = 0
+	OBJECT_TYPE_PROCESS        = 1
+	OBJECT_TYPE_THREAD         = 2
+	OBJECT_TYPE_FILE           = 3
+	OBJECT_TYPE_SEMAPHORE      = 4
+	OBJECT_TYPE_EVENT          = 5
+	OBJECT_TYPE_MUTEX          = 6
+	OBJECT_TYPE_SYMLINK        = 7
+	OBJECT_TYPE_PIPE           = 8
+	OBJECT_TYPE_TOKEN          = 9
+	OBJECT_TYPE_DEVICE         = 10
+	OBJECT_TYPE_DRIVER         = 11
+	OBJECT_TYPE_DESKTOP        = 12
+	OBJECT_TYPE_DBGOBJECT      = 13
+	OBJECT_TYPE_DIRECTORY      = 14
+	OBJECT_TYPE_WORKER_FACTORY = 15
+	OBJECT_TYPE_SECTION        = 16
+	OBJECT_TYPE_KEY            = 17
+)
+
+const (
+	PARAMETER_ANSISTRING    = 1
+	PARAMETER_ASTR_ARRAY    = 10
+	PARAMETER_UINT32        = 2
+	PARAMETER_UINT32_ARRAY  = 20
+	PARAMETER_UINT64        = 3
+	PARAMETER_UINT64_ARRAY  = 30
+	PARAMETER_BOOLEAN       = 4
+	PARAMETER_BOOLEAN_ARRAY = 40
+	PARAMETER_POINTER       = 5
+	PARAMETER_POINTER_ARRAY = 50
+	PARAMETER_BYTES         = 7
+)
