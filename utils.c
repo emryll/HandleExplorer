@@ -120,3 +120,15 @@ BYTE* CreateParameterHeader(char* name, DWORD size, DWORD type, size_t* dataSize
     //printf("\n[debug] parameter packet: %s\n", (char*)packet);
     return packet;
 }
+
+char* UnicodeToAnsi(UNICODE_STRING ustr) {
+    if (ustr.Length == 0 || ustr.Buffer == NULL) return NULL;
+    
+    int charCount = ustr.Length / sizeof(WCHAR);
+    int bufSize = charCount + 1;
+
+    char* out = (char*)malloc(bufSize);
+    WideCharToMultiByte(CP_UTF8, 0, ustr.Buffer, charCount, out, bufSize, NULL, NULL);
+    out[charCount] = '\0';
+    return out;
+}
