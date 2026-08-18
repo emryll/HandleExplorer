@@ -131,6 +131,37 @@ func (reg *ObjectAccessRegistry) RemoveEntriesByProcess(pid uint32) {
 	delete(reg.ProcessLookup, pid)
 }
 
+// Find all corresponding entries based on object description.
+// @param  objectType    The type of object to be accessed.
+// @param  interaction   (optional) Bitmask describing type of interaction.
+// @param  names         (optional) Whitelist for object names.
+// @return               All matching object access entries.
+func (reg *ObjectAccessRegistry) FindByObject(objectType Bitmask, interaction Bitmask, names ...string) []*AccessEntry {
+	if len(reg.ObjectLookup[uint32(objectType)]) == 0 {
+		return nil
+	}
+	var (
+		result     []*AccessEntry
+		nameFilter = make(map[string]bool)
+	)
+
+	for _, name := range names {
+		nameFilter[name] = true
+	}
+
+	for key, entries := range reg.ObjectLookup[uint32(objectType)] {
+		if len(names) > 0 && !nameFilter[key.Name] {
+			continue
+		}
+		for _, entry := range entries {
+			if (Bitmask)(entry.Access).HasFlags(interaction) {
+				result = append(result, entry)
+			}
+		}
+	}
+	return result
+}
+
 func (entry *AccessEntry) CreateObjectKey() ObjectAccessKey {
 	return ObjectAccessKey{Name: entry.Name, Pid: entry.Pid}
 }
