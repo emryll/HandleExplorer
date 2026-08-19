@@ -88,3 +88,45 @@ const (
 	PARAMETER_POINTER_ARRAY = 50
 	PARAMETER_BYTES         = 7
 )
+
+var ( //* Handle Cache Cleanup modifiers
+	HCC_MULTIPLIER_CONST  = 1
+	HCC_OBJECT_MULTIPLIER = 2
+	HCC_TIME_MULTIPLIER   = 2
+	HCC_TIME_POWER        = 1.5
+
+	HCC_DEFAULT_QUOTA        = 50
+	HCC_TOP_PRIORITY_BONUS   = 5
+	HCC_OBJECT_TIER_1_SCORE  = 2
+	HCC_OBJECT_TIER_2_SCORE  = 15
+	HCC_OBJECT_TIER_3_SCORE  = 40
+	HCC_OBJECT_TIER_4_SCORE  = 60
+	HCC_OBJECT_UNKNOWN_SCORE = 70
+)
+
+// lower score indicates its more important
+var ObjectTypeTier = map[uint32]int{
+	OBJ_TYPE_TP_WORKER_FACTORY:       1,
+	OBJ_TYPE_PROCESS:                 1,
+	OBJ_TYPE_THREAD:                  1,
+	OBJ_TYPE_TOKEN:                   1,
+	OBJ_TYPE_SECTION:                 1,
+	OBJ_TYPE_ALPC_PORT:               1,
+	OBJ_TYPE_DRIVER:                  1,
+	OBJ_TYPE_DESKTOP:                 2,
+	OBJ_TYPE_DEBUG_OBJECT:            2,
+	OBJ_TYPE_SESSION:                 2,
+	OBJ_TYPE_JOB:                     3,
+	OBJ_TYPE_ETW_CONSUMER:            3,
+	OBJ_TYPE_ETW_REGISTRATION:        3,
+	OBJ_TYPE_ETW_SESSION_DEMUX_ENTRY: 3,
+	OBJ_TYPE_DIRECTORY:               3,
+	OBJ_TYPE_FILE:                    3,
+	OBJ_TYPE_EVENT:                   3,
+	OBJ_TYPE_SEMAPHORE:               3,
+	OBJ_TYPE_CALLBACK:                3,
+	OBJ_TYPE_WMI_GUID:                3,
+	OBJ_TYPE_TIMER:                   4,
+	OBJ_TYPE_IRTIMER:                 4,
+	OBJ_TYPE_SYMLINK:                 4,
+}
