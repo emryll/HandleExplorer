@@ -1,5 +1,26 @@
 package main
 
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/fatih/color"
+)
+
+func GetInput(reader *bufio.Reader, msg ...string) string {
+	if len(msg) > 0 {
+		fmt.Printf("%s: ", msg)
+	}
+	if reader == nil {
+		reader = bufio.NewReader(os.Stdin)
+	}
+
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
+}
+
 // Translate internal object type enum into name.
 func GetTypeName(object int) string {
 	switch object {
@@ -143,4 +164,25 @@ func GetTypeName(object int) string {
 		return "VRegConfigurationContext"
 	}
 	return "(unknown)"
+}
+
+func PrintBanner() {
+	yellow := color.NewColor(color.FgHiYellow, color.Bold)
+	fmt.Println("\t   __ _____   _  _____  __   ____   ")
+	fmt.Println("\t  / // / _ | / |/ / _ \\/ /  / __/   ")
+	fmt.Println("\t / _  / __ |/    / // / /__/ _/     ")
+	fmt.Println("\t/_//_/_/ |_/_/|_/____/____/___/     ")
+	yellow.Printf("\t  / __/_ __ ___  / /__  _______ ____\n")
+	yellow.Printf("\t / _/ \\ \\ // _ \\/ / _ \\/ __/ -_) __/\n")
+	yellow.Printf("\t/___//_\\_\\/ .__/_/\\___/_/  \\__/_/   \n")
+	yellow.Printf("\t         /_/                        \n")
+	fmt.Printf("\t\t\tv%d.%d by emryll\n\n", MAJOR_VERSION, MINOR_VERSION)
+
+	PrintDescription()
+}
+
+func PrintDescription() {
+	fmt.Println("\tThis is a commandline-tool for searching")
+	fmt.Println("\t& analyzing object access through handles.\n")
+	fmt.Println("\tTo view available commands, run \"help\"")
 }
