@@ -186,3 +186,40 @@ func PrintDescription() {
 	fmt.Println("\t& analyzing object access through handles.\n")
 	fmt.Println("\tTo view available commands, run \"help\"")
 }
+
+// Returns string interpretation of all contained flags,
+// or if it couldn't find corresponding enums, it returns raw value
+func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
+	var flags []string
+	for _, entry := range valToEnum[domain] {
+		if mask&entry.Value == entry.Value {
+			//* strip flag and save it
+			mask &^= entry.Value
+			flags = append(flags, entry.Name)
+		}
+	}
+	//* check the generic domain
+	for _, entry := range valToEnum[DOMAIN_GLOBAL] {
+		if mask&entry.Value != 0 {
+			//* strip flag and save it
+			mask &^= entry.Value
+			flags = append(flags, entry.Name)
+		}
+	}
+
+	if len(flags) == 0 {
+		return mask
+	}
+
+	if len(array) == 0 || !array[0] {
+		var result string
+		for i := range flags {
+			result += flags[i]
+			if i+1 < len(flags) {
+				result += " | "
+			}
+		}
+		return result
+	}
+	return flags
+}
