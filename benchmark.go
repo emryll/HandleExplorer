@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -96,4 +97,127 @@ func GetBenchmarker(name string) *Benchmarker {
 	b := NewBenchmarker(name, 50000)
 	BenchmarkRegistry[name] = b
 	return b
+}
+
+func (b *Benchmarker) PrintDistribution() {
+	if len(b.entries) == 0 {
+		fmt.Printf("%s: no samples\n", b.Name)
+		return
+	}
+
+	samples := append([]time.Duration(nil), b.entries...)
+	sort.Slice(samples, func(i, j int) bool {
+		return samples[i] < samples[j]
+	})
+
+	var (
+		min  = samples[0]
+		max  = samples[len(samples)-1]
+		line = "───────────────────────────────────────────────────────────────"
+	)
+	const (
+		bucketCount = 10
+		barWidth    = 40
+	)
+
+	// avoid zero range when every sample is the same
+	if min == max {
+		fmt.Printf("\t%s\n%s\n", b.Name, line)
+		fmt.Printf("%s │ %s\n", formatDuration(min), "████████████████████████████████████████")
+		fmt.Println(line)
+		return
+	}
+
+	bucketSize := (max - min) / bucketCount
+	if bucketSize == 0 {
+		bucketSize = 1
+	}
+
+	buckets := make([]int, bucketCount)
+
+	for _, sample := range samples {
+		index := int((sample - min) / bucketSize)
+
+		// The maximum value can land exactly on bucketCount.
+		if index >= bucketCount {
+			index = bucketCount - 1
+		}
+
+		buckets[index]++
+	}
+
+	maxBucket := 0
+	for _, count := range buckets {
+		if count > maxBucket {
+			maxBucket = count
+		}
+	}
+
+	fmt.Printf("\n\t%s\n", b.Name)
+	fmt.Println(line)
+
+	for i, count := range buckets {
+		start := min + time.Duration(i)*bucketSize
+		end := start + bucketSize
+
+		barLength := count * barWidth / maxBucket
+		bar := ""
+
+		for j := 0; j < barLength; j++ {
+			bar += "█"
+		}
+
+		fmt.Printf(
+			"%8s - %-8s │ %-40s %d\n",
+			formatDuration(start),
+			formatDuration(end),
+			bar,
+			count,
+		)
+	}
+
+	fmt.Println(line)
+	b.printStats(samples)
+}
+
+func (b *Benchmarker) printStats(samples []time.Duration) {
+	fmt.Printf("%16s: %s\n", "min", formatDuration(samples[0]))
+	fmt.Printf("%16s: %s\n", "median", formatDuration(percentile(samples, 50)))
+	fmt.Printf("%16s: %s\n", "p95", formatDuration(percentile(samples, 95)))
+	fmt.Printf("%16s: %s\n", "p99", formatDuration(percentile(samples, 99)))
+	fmt.Printf("%16s: %s\n", "max", formatDuration(samples[len(samples)-1]))
+}
+
+func percentile(samples []time.Duration, p float64) time.Duration {
+	if len(samples) == 1 {
+		return samples[0]
+	}
+
+	index := p / 100 * float64(len(samples)-1)
+	lower := int(index)
+	upper := lower + 1
+
+	if upper >= len(samples) {
+		return samples[lower]
+	}
+
+	fraction := index - float64(lower)
+
+	return time.Duration(
+		float64(samples[lower]) +
+			fraction*float64(samples[upper]-samples[lower]),
+	)
+}
+
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Microsecond:
+		return fmt.Sprintf("%.2fns", float64(d.Nanoseconds()))
+	case d < time.Millisecond:
+		return fmt.Sprintf("%.2fµs", float64(d)/float64(time.Microsecond))
+	case d < time.Second:
+		return fmt.Sprintf("%.2fms", float64(d)/float64(time.Millisecond))
+	default:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	}
 }
