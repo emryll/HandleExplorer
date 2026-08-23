@@ -9,6 +9,55 @@ import (
 	"github.com/fatih/color"
 )
 
+//*========================[ Distribution Charts ]=================================
+
+func PrintHandleDistribution(handlesByType map[string]int) {
+	if handlesByType == nil || len(handlesByType) == 0 {
+
+	}
+	if len(handlesByType) == 0 {
+		return
+	}
+
+	var (
+		maxValue    int
+		longestName int
+		maxWidth    = 35
+
+		yellow = color.New(color.FgHiYellow)
+	)
+
+	type entry struct {
+		objType string
+		count   int
+	}
+	entries := make([]entry, len(handlesByType))
+	for objType, count := range handlesByType {
+		entries = append(entries, entry{objType: objType, count: count})
+		if len(objType) > longestName {
+			longestName = len(objType)
+		}
+		if count > maxValue {
+			maxValue = count
+		}
+	}
+	divider := strings.Repeat("─", longestName+maxWidth)
+
+	// sort object types in descending order
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].count > entries[j].count
+	})
+
+	fmt.Println(divider)
+	for _, entry := range entries {
+		yellow.Printf("%s", entry.objType)
+		fmt.Printf("%s  │  ", strings.Repeat(" ", longestName-len(entry.objType)))
+		fmt.Printf("%s %d\n",
+			GetHorizontalBar(entry.count, maxValue, maxWidth), entry.count)
+	}
+	fmt.Println(divider)
+}
+
 // Print the access distribution chart of a named object.
 func PrintAccessDistribution(objType uint32, name string) {
 	if name == "" {
