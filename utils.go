@@ -128,6 +128,17 @@ func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
 	return flags
 }
 
+func parseAccessString(accessList string) Bitmask {
+	var mask Bitmask
+	flags := strings.Split(accessList, "|")
+	for _, flag := range flags {
+		if enum, exists := enumToVal[flag]; exists {
+			mask |= enum.Value
+		}
+	}
+	return mask
+}
+
 // Translate internal object type enum into name.
 func GetTypeName(object uint32) string {
 	switch object {
