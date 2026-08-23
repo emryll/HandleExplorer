@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -43,6 +45,87 @@ func PrintDescription() {
 	fmt.Println("\tThis is a commandline-tool for searching")
 	fmt.Println("\t& analyzing object access through handles.\n")
 	fmt.Println("\tTo view available commands, run \"help\"")
+}
+
+func (e *AccessEntry) Print(w io.Writer) {
+	fmt.Fprintf(w, "* Access by process %d (%s)\n", e.Pid, filepath.Base(LookupProcessPath(e.Pid)))
+	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(e.Object))
+	if e.Name != "" {
+		fmt.Fprintf(w, "\tObject name: %s\n", e.Name)
+	}
+	fmt.Fprintf(w, "\tAccess level: %v\n", e.GetAccessAsString())
+}
+
+func (e *AccessEntry) GetAccessAsString() any {
+	var domain uint8
+	switch e.Object {
+	case OBJ_TYPE_PROCESS:
+		domain = DOMAIN_PROCESS
+	case OBJ_TYPE_THREAD:
+		domain = DOMAIN_THREAD
+	case OBJ_TYPE_EVENT:
+		domain = DOMAIN_EVENT
+	case OBJ_TYPE_MUTANT:
+		domain = DOMAIN_MUTEX
+	case OBJ_TYPE_TIMER, OBJ_TYPE_IRTIMER:
+		domain = DOMAIN_TIMER
+	case OBJ_TYPE_SEMAPHORE:
+		domain = DOMAIN_SEMAPHORE
+	case OBJ_TYPE_SECTION:
+		domain = DOMAIN_SECTION
+	case OBJ_TYPE_FILE:
+		domain = DOMAIN_FILE
+	case OBJ_TYPE_PIPE:
+		domain = DOMAIN_PIPE
+	case OBJ_TYPE_JOB:
+		domain = DOMAIN_JOB
+	case OBJ_TYPE_KEY:
+		domain = DOMAIN_KEY
+	case OBJ_TYPE_TOKEN:
+		domain = DOMAIN_TOKEN
+	case OBJ_TYPE_DESKTOP:
+		domain = DOMAIN_DESKTOP
+	default:
+		domain = DOMAIN_GLOBAL
+	}
+	return InterpretBitmaskValue((Bitmask)(e.Access), domain, true)
+}
+
+// Returns string interpretation of all contained flags,
+// or if it couldn't find corresponding enums, it returns raw value
+func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
+	var flags []string
+	for _, entry := range valToEnum[domain] {
+		if mask&entry.Value == entry.Value {
+			//* strip flag and save it
+			mask &^= entry.Value
+			flags = append(flags, entry.Name)
+		}
+	}
+	//* check the generic domain
+	for _, entry := range valToEnum[DOMAIN_GLOBAL] {
+		if mask&entry.Value != 0 {
+			//* strip flag and save it
+			mask &^= entry.Value
+			flags = append(flags, entry.Name)
+		}
+	}
+
+	if len(flags) == 0 {
+		return mask
+	}
+
+	if len(array) == 0 || !array[0] {
+		var result string
+		for i := range flags {
+			result += flags[i]
+			if i+1 < len(flags) {
+				result += " | "
+			}
+		}
+		return result
+	}
+	return flags
 }
 
 // Translate internal object type enum into name.
