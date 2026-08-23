@@ -17,6 +17,7 @@ Interactive command-line tool for capturing, searching and analyzing handle data
 - [Go](https://go.dev/doc/install)
 
 ## Usage
+> Currently not usable.. Very soon
 ```
 git clone https://github.com/emryll/HandleExplorer.git
 cd .\HandleExplorer\
