@@ -1,18 +1,18 @@
 package main
 
 import (
-	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-//TODO: set up lightweight process lookup for names etc
+//?=======================================================================+
+//?    This file is responsible for tracking details about processes      |
+//?=======================================================================+
 
-type ProcessTable struct {
-	mu    sync.RWMutex
-	Table map[uint32]*Process
-}
+//*======================[ Process Table ]==============================
+
+var g_ProcessTable = &ProcessTable{}
 
 func (ps *ProcessTable) LookupProcess(pid uint32) *Process {
 	if ps.Table == nil {
@@ -46,6 +46,34 @@ func (ps *ProcessTable) RemoveProcess(pid uint32) {
 	if _, exists := ps.Table[pid]; exists {
 		delete(ps.Table, pid)
 	}
+}
+
+//*=============================[ Utilities ]================================
+
+// Get the path of a processes source exe file.
+func LookupProcessPath(pid uint32) string {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(handle)
+	if path, err := GetProcessExecutable(handle); err == nil {
+		return path
+	}
+	return ""
+}
+
+// Get the path of a processes source exe file.
+// Provided handle only needs PROCESS_QUERY_LIMITED_INFORMATION
+func GetProcessExecutable(handle windows.Handle) (string, error) {
+	var buf [windows.MAX_PATH]uint16
+	size := uint32(len(buf))
+	// flag 0 for win32 path format
+	err := windows.QueryFullProcessImageName(handle, 0, &buf[0], &size)
+	if err != nil {
+		return "", err
+	}
+	return windows.UTF16ToString(buf[:size]), nil
 }
 
 // Check the status of a file's digital signature, returned as an enum (CERT_).
@@ -99,6 +127,7 @@ func IsSigned(path string) (int, error) {
 	return 0, ret
 }
 
+// Check if a process has elevated access rights.
 // Provided handle only needs PROCESS_QUERY_LIMITED_INFORMATION
 func IsProcessElevated(hProcess windows.Handle) (bool, error) {
 	var (
