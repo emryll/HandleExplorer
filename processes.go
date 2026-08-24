@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -14,6 +17,27 @@ import (
 
 //? Processes are scanned periodically and their details are cached,
 //?  just so that this data is not constantly queried from the OS.
+
+// Main scanner routine for tracking active processes and their details.
+func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
+	defer wg.Done()
+	if err := ScanProcesses(); err != nil {
+		PrintError("Failed to scan processes: %v\n", err)
+	}
+
+	refresh := time.NewTicker(time.Duration(PS_REFRESH_INTERVAL) * time.Second)
+	defer refresh.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-refresh.C:
+			if err := ScanProcesses(); err != nil {
+				PrintError("Failed to scan processes: %v\n", err)
+			}
+		}
+	}
+}
 
 // Scan processes via th32 snapshot and add them to the process table. One time.
 // This will also check for any dead processes (without callbacks).
@@ -37,7 +61,7 @@ func ScanProcesses() error {
 			return err
 		}
 
-		processes = append(processes, &entry)
+		processes[entry.ProcessID] = &entry
 		RegisterProcess(&entry)
 	}
 	// This tool doesn't have a driver for callbacks, so...
