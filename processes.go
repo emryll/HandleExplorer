@@ -18,6 +18,10 @@ import (
 //? Processes are scanned periodically and their details are cached,
 //?  just so that this data is not constantly queried from the OS.
 
+func NewProcessTable() *ProcessTable {
+	return &ProcessTable{Table: make(map[uint32]*Process)}
+}
+
 // Main scanner routine for tracking active processes and their details.
 func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
@@ -69,6 +73,25 @@ func ScanProcesses() error {
 	return nil
 }
 
+// Add process to process table and the correct graph.
+// If the process already exists, any missing data is filled.
+func RegisterProcess(entry *windows.ProcessEntry32) {
+	name := windows.UTF16ToString(entry.ExeFile[:])
+	if ps := g_ProcessTable.LookupProcess(entry.ProcessID); ps != nil {
+		ps.fillMissing(entry) // second pass with ProcessEntry32
+		return
+	}
+	process := CreateProcessEntry(entry.ProcessID, entry.ParentProcessID, name)
+	g_ProcessTable.AddProcess(process)
+
+	parent := g_ProcessTable.LookupProcess(entry.ParentProcessID)
+	if parent == nil {
+		pps := CreateProcessEntry(entry.ParentProcessID, 0)
+		g_ProcessTable.AddProcess(pps)
+		parent = pps
+	}
+}
+
 //*======================[ Process Table ]==============================
 
 var g_ProcessTable = &ProcessTable{}
@@ -95,10 +118,8 @@ func (ps *ProcessTable) AddProcess(process *Process) {
 	ps.Table[process.ProcessId] = process
 }
 
+// Does not lock the mutex
 func (ps *ProcessTable) RemoveProcess(pid uint32) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
 	if ps.Table == nil {
 		return
 	}
