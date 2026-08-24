@@ -10,6 +10,41 @@ import (
 //?    This file is responsible for tracking details about processes      |
 //?=======================================================================+
 
+//*=========================[ Process Scanner ]=============================
+
+//? Processes are scanned periodically and their details are cached,
+//?  just so that this data is not constantly queried from the OS.
+
+// Scan processes via th32 snapshot and add them to the process table. One time.
+// This will also check for any dead processes (without callbacks).
+func ScanProcesses() error {
+	//* get a process snapshot
+	handle, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	processes := make(map[uint32]*windows.ProcessEntry32)
+
+	//* walk the processes
+	for {
+		err = windows.Process32Next(handle, &entry)
+		if err != nil {
+			if err.Error() == "There are no more files." {
+				break
+			}
+			return err
+		}
+
+		processes = append(processes, &entry)
+		RegisterProcess(&entry)
+	}
+	// This tool doesn't have a driver for callbacks, so...
+	ScanForDeadNodes(processes)
+	return nil
+}
+
 //*======================[ Process Table ]==============================
 
 var g_ProcessTable = &ProcessTable{}
