@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -89,6 +90,107 @@ func RegisterProcess(entry *windows.ProcessEntry32) {
 		pps := CreateProcessEntry(entry.ParentProcessID, 0)
 		g_ProcessTable.AddProcess(pps)
 		parent = pps
+	}
+}
+
+// Create an initial process entry with basic details.
+// This does not add the process entry to the process table.
+func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath string) *Process {
+	entry := Process{
+		ProcessId: pid,
+		ParentPid: ppid,
+	}
+	// used as fallback
+	if len(fallbackPath) > 0 {
+		entry.Path = fallbackPath[0]
+	}
+
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err == nil {
+		defer windows.CloseHandle(handle)
+		path, err := GetProcessExecutable(handle)
+		if err == nil {
+			entry.Path = path
+			// check signature only if full path is known,
+			// otherwise this could be fooled by having
+			// a different file of same name in working dir
+			status, err := IsSigned(path)
+			if err == nil {
+				entry.SigStatus = status
+			}
+		}
+		elevated, err := IsProcessElevated(handle)
+		if err == nil {
+			entry.Elevated = elevated
+		}
+	} else {
+		PrintError("Failed to open process %d: %v\n", pid, err)
+	}
+
+	if ppid == 0 {
+		return &entry
+	}
+
+	parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ppid)
+	// parent basic info
+	if err == nil {
+		defer windows.CloseHandle(parentHandle)
+		parentPath, err := GetProcessExecutable(parentHandle)
+		if err == nil {
+			entry.ParentPath = parentPath
+		}
+	}
+	return &entry
+}
+
+// Fill missing fields of process structure.
+// This is intended for a second pass (first seen as parent)
+func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
+	// this is ugly burger code, don't worry about that ;)
+	var handle windows.Handle
+	if ps.Path == "" {
+		var err error // to avoid shadow variable bug
+		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, entry.ProcessID)
+		if err != nil {
+			defer windows.CloseHandle(handle)
+		}
+
+		if handle != nil {
+			path, err := GetProcessExecutable(handle)
+			if err == nil {
+				ps.Path = path
+			}
+		}
+		// fallback name
+		if ps.Path == "" {
+			ps.Path = windows.UTF16ToString(entry.ExeFile[:])
+		}
+	}
+
+	if handle != nil {
+		elevated, err := IsProcessElevated(handle)
+		if err == nil {
+			ps.Elevated = elevated
+		}
+	}
+	// only check if you have the full path,
+	// otherwise the checks can be fooled
+	if filepath.Base(ps.Path) != ps.Path {
+		status, err := IsSigned(ps.Path)
+		if err == nil {
+			ps.SigStatus = uint32(status)
+		}
+	}
+	
+	// fill parent info
+	if ps.ParentPid == 0 {
+		ps.ParentPid = entry.ParentProcessID
+	}
+	if ps.ParentName == "" && ps.ParentPid != 0 {
+		parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ps.ParentPid)
+		if err != nil {
+			defer windows.Close
+		}
 	}
 }
 
