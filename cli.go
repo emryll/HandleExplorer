@@ -54,6 +54,41 @@ func CliParseCommand(tokens []string) bool {
 	return false
 }
 
+func CliHelpCommand(tokens []string) {
+	if len(tokens) > 0 && tokens[0] == "help" {
+		tokens = tokens[1:]
+	}
+	if len(tokens) == 0 {
+		PrintBasicHelp()
+		return
+	}
+	switch tokens[1] {
+	case "find":
+		fmt.Println("\tfind - Search for handles with filters.")
+		fmt.Println("Usage: find [flags]")
+		fmt.Println("\t-p <ps_1,ps_2,...,ps_n>          Set a filter of processes (pid or name).")
+		fmt.Println("\t-o <obj_1,obj_2,...,obj_n>       Set a filter of object types.")
+		fmt.Println("\t-n <name_1,name_2,...,name_n>    Set a filter of object names.")
+		fmt.Println("\n\tAll of the flags allow comma-separated lists of entries.")
+		fmt.Println("\tIt is suggested to simply run \"find\" as this will open")
+		fmt.Println("\t a graphical (TUI) menu for selecting search filters.")
+		fmt.Println()
+	case "ps", "process", "p":
+		fmt.Println("\tps - Search for processes with filters.")
+		fmt.Println("Usage: ps [pid | path]")
+		fmt.Println("\tSimply running \"ps\" will open up a graphical")
+		fmt.Println("\t (TUI) menu for selecting process search filters.")
+		fmt.Println()
+	case "clusters", "c":
+		fmt.Println("\tclusters - Find overlapping access to Windows objects.")
+		fmt.Println("Usage: clusters [flags]")
+		fmt.Println("\t-o <type>         Filter for a certain object type (NT names)")
+		fmt.Println("\t-p <pid>          Find overlapping access with specific process.")
+		fmt.Println("\t-m <min>          Minimum size of clusters.")
+		fmt.Println()
+	}
+}
+
 func PrintBasicHelp() {
 	fmt.Println("\t\"obj\" is an universal alias for \"object\".")
 	fmt.Println("\t\"ps\" is an universal alias for \"process\".\n")
