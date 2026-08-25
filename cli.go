@@ -53,3 +53,15 @@ func CliParseCommand(tokens []string) bool {
 	}
 	return false
 }
+
+func PrintBasicHelp() {
+	fmt.Println("\t\"obj\" is an universal alias for \"object\".")
+	fmt.Println("\t\"ps\" is an universal alias for \"process\".\n")
+	fmt.Println("help [command]              Get help on available commands.")
+	fmt.Println("overview                    View the current status of data and generic analysis.")
+	fmt.Println("ps  [pid | path]            View a process, or search for processes with filters.")
+	fmt.Println("find  [flags]               Search for handles with filters. No args opens up a menu.")
+	fmt.Println("clusters [flags]            Find processes with overlapping object access.")
+	fmt.Println("outliers                    Find statistical outliers.")
+	fmt.Println("exit | quit | q             Exit the program.")
+}
