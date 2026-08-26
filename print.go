@@ -9,6 +9,39 @@ import (
 	"github.com/fatih/color"
 )
 
+//?===================================================================================+
+//?  This file is responsible for non-TUI prints for the user, such as histograms.    |
+//?===================================================================================+
+
+func PrintObject(objType uint32, name string) {
+	if name == "" {
+		fmt.Println("Anonymous objects can't be tracked in the current version. :-/")
+		fmt.Println("Sorry about that... Better object tracking will be added in the future.")
+		return
+	}
+	fmt.Printf("%s %s\n", GetTypeName(objType), name)
+
+	pids := GetObjectAccessPids(objType, name)
+	if len(pids) == 0 {
+		fmt.Println("object not accessible by any processes")
+		return
+	}
+
+	fmt.Printf("accessible by %d processes:\n\t", len(pids))
+	for i := 0; i < len(pids); i++ {
+		if i != 0 {
+			fmt.Printf(", ")
+		}
+		fmt.Printf("%d", pids[i])
+		if i%16 == 0 {
+			fmt.Printf("\n\t")
+		}
+	}
+
+	fmt.Println("access distribution:")
+	PrintAccessDistribution(objType, name)
+}
+
 //*========================[ Distribution Charts ]=================================
 
 func PrintHandleDistribution(handlesByType map[string]int) {
