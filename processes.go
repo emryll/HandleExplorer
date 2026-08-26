@@ -70,7 +70,7 @@ func ScanProcesses() error {
 		RegisterProcess(&entry)
 	}
 	// This tool doesn't have a driver for callbacks, so...
-	ScanForDeadNodes(processes)
+	ScanForDeadProcesses(processes)
 	return nil
 }
 
@@ -194,6 +194,39 @@ func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 			if err == nil {
 				ps.ParentPath = path
 			}
+		}
+	}
+}
+
+func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
+	if processes == nil || len(processes) == 0 {
+		return
+	}
+	if g_ProcessTable == nil || g_ProcessTable.Table == nil {
+		PrintWithRedLabel("[WARNING]", "Global process table not initialized!!")
+	}
+
+	g_ProcessTable.mu.RLock()
+	defer g_ProcessTable.mu.RUnlock()
+
+	//* make sure all processes are found in the process snapshot
+	for pid, ps := range g_ProcessTable.Table {
+		var newEntry *Process
+		if pe32, exists := processes[pid]; exists {
+			name := windows.UTF16ToString(pe32.ExeFile[:])
+			if name == filepath.Base(ps.Path) {
+				continue
+			}
+			newEntry = CreateProcessEntry(pe32.ProcessID, pe32.ParentProcessID, name)
+		}
+		g_ProcessTable.RemoveProcess(pid)
+		g_ObjectAccessRegistry.RemoveEntriesByProcess(pid)
+		HandleTable.Remove(pid)
+
+		// potential edge case: new process with same pid
+		//? would this cause issues with handlecache?
+		if newEntry != nil {
+			g_ProcessTable.AddProcess(newEntry)
 		}
 	}
 }
