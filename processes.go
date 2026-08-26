@@ -95,7 +95,7 @@ func RegisterProcess(entry *windows.ProcessEntry32) {
 
 // Create an initial process entry with basic details.
 // This does not add the process entry to the process table.
-func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath string) *Process {
+func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath ...string) *Process {
 	entry := Process{
 		ProcessId: pid,
 		ParentPid: ppid,
@@ -181,15 +181,19 @@ func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 			ps.SigStatus = uint32(status)
 		}
 	}
-	
+
 	// fill parent info
 	if ps.ParentPid == 0 {
 		ps.ParentPid = entry.ParentProcessID
 	}
-	if ps.ParentName == "" && ps.ParentPid != 0 {
+	if ps.ParentPath == "" && ps.ParentPid != 0 {
 		parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ps.ParentPid)
 		if err != nil {
-			defer windows.Close
+			defer windows.CloseHandle(parentHandle)
+			path, err := GetProcessExecutable(handle)
+			if err == nil {
+				ps.ParentPath = path
+			}
 		}
 	}
 }
@@ -228,6 +232,25 @@ func (ps *ProcessTable) RemoveProcess(pid uint32) {
 	if _, exists := ps.Table[pid]; exists {
 		delete(ps.Table, pid)
 	}
+}
+
+func LookupParent(pid uint32) (uint32, string) {
+	ps := g_ProcessTable.LookupProcess(pid)
+	if ps != nil {
+		return ps.ParentPid, ps.ParentPath
+	}
+
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return 0, ""
+	}
+	defer windows.CloseHandle(handle)
+
+	ppid, err := GetParentPid(handle)
+	if err == nil {
+		return ppid, ""
+	}
+	return 0, ""
 }
 
 //*=============================[ Utilities ]================================
@@ -327,4 +350,22 @@ func IsProcessElevated(hProcess windows.Handle) (bool, error) {
 		return false, err
 	}
 	return elevation.TokenIsElevated != 0, nil
+}
+
+func GetParentPid(handle windows.Handle) (uint32, error) {
+	var (
+		pbi    windows.PROCESS_BASIC_INFORMATION
+		retLen uint32
+	)
+	err := windows.NtQueryInformationProcess(
+		handle,
+		windows.ProcessBasicInformation,
+		unsafe.Pointer(&pbi),
+		uint32(unsafe.Sizeof(pbi)),
+		&retLen,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(pbi.InheritedFromUniqueProcessId), nil
 }
