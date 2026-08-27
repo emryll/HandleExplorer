@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -12,6 +14,77 @@ import (
 //?===================================================================================+
 //?  This file is responsible for non-TUI prints for the user, such as histograms.    |
 //?===================================================================================+
+
+func PrintProcess(pid uint32) {
+	ps := g_ProcessTable.LookupProcess(pid)
+	fmt.Printf("process %d\n", pid)
+	fmt.Printf("path: %s\n", ps.Path)
+
+	if ps.ParentPath != "" {
+		fmt.Printf("parent: %s (PID %d)\n", ps.ParentPath, ps.ParentPid)
+	} else {
+		fmt.Printf("parent: %d\n", ps.ParentPath)
+	}
+
+	//* handles
+	var totalHandles int
+	handlesByType := HandleTable.getPsHandleCountsByType(pid)
+	for _, count := range handlesByType {
+		totalHandles += count
+	}
+	fmt.Printf("\nhandles: %d\n", totalHandles)
+	PrintHandleDistribution(handlesByType)
+
+	/*
+		//* most similar
+		processes := FindMostSimilar(pid)
+		for pid, process := range processes {
+			fmt.Printf("\t- %s (%d)\n")
+		}
+	*/
+
+	//* overlapping
+	fmt.Println("\naccess overlaps with:")
+	overlapping := g_ObjectAccessRegistry.FindOverlappingWithPs(pid)
+	if len(overlapping) == 0 {
+		fmt.Printf("\tNone.\n\n")
+		return
+	}
+
+	// flatten the map to sort it
+	// and show top results only
+	type entry struct {
+		count int
+		pid   uint32
+	}
+	var entries []entry
+	for pid, count := range overlapping {
+		entries = append(entries, entry{pid: pid, count: count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].count > entries[j].count
+	})
+
+	for i := 0; i < 5; i++ {
+		if i >= len(overlapping) {
+			break
+		}
+		p := g_ProcessTable.LookupProcess(entries[i].pid)
+		if p != nil {
+			fmt.Printf("\t- %s (PID %d)", p.Path, p.ProcessId)
+		} else {
+			fmt.Printf("\t- PID %d (unknown)", entries[i].pid)
+		}
+		if entries[i].count > 1 {
+			fmt.Printf(" [x%d]", entries[i].count)
+		}
+		fmt.Println()
+	}
+	if len(overlapping) > 5 {
+		fmt.Printf("\t(and %d others)\n", len(overlapping)-5)
+	}
+	fmt.Println()
+}
 
 func PrintObject(objType uint32, name string) {
 	if name == "" {
@@ -41,6 +114,19 @@ func PrintObject(objType uint32, name string) {
 	fmt.Println("access distribution:")
 	PrintAccessDistribution(objType, name)
 }
+
+func (e *AccessEntry) Print(w io.Writer) {
+	fmt.Fprintf(w, "* Access by process %d (%s)\n", e.Pid, filepath.Base(LookupProcessPath(e.Pid)))
+	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(e.Object))
+	if e.Name != "" {
+		fmt.Fprintf(w, "\tObject name: %s\n", e.Name)
+	}
+	fmt.Fprintf(w, "\tAccess level: %v\n", e.GetAccessAsString())
+}
+
+//TODO: handle.Print()
+
+//TODO: cluster.Print()
 
 //*========================[ Distribution Charts ]=================================
 
@@ -116,7 +202,7 @@ func PrintAccessDistribution(objType uint32, name string) {
 			continue
 		}
 		for _, entry := range entries {
-			flags := GetStringFlagsFromValue(entry.Access)
+			flags := entry.GetAccessFlagsAsString().([]string)
 			for _, flag := range flags {
 				if len(flag) > longestName {
 					longestName = len(flag)
