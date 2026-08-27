@@ -202,7 +202,7 @@ func PrintAccessDistribution(objType uint32, name string) {
 			continue
 		}
 		for _, entry := range entries {
-			flags := entry.GetAccessFlagsAsString().([]string)
+			flags := entry.GetAccessFlagsAsString()
 			for _, flag := range flags {
 				if len(flag) > longestName {
 					longestName = len(flag)
