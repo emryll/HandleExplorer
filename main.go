@@ -1,42 +1,26 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"os"
-	"strings"
 	"sync"
 )
 
 var (
-	VERSION = "0.0"
-	stars   = strings.Repeat("*", 30)
+	MAJOR_VERSION = 0
+	MINOR_VERSION = 1
 )
 
 func main() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
+	wg.Add(2)
+	go ProcessScanner(&wg, ctx)
+	go HandleTable.CacheCleaner(&wg, ctx) // TODO: migrate to run on events
 	PrintBanner()
-	go HandleScanner(&wg, ctx)
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		if ctx.Err() != nil {
-			break
-		}
+	HandleTable.Init()
+	CommandParsingLoop(&wg, cancel)
 
-		command := GetInput(" handles> ", reader)
-		if command == "" {
-			continue
-		}
-
-		tokens := strings.Fields(command)
-		exit := CliParseCommand(tokens)
-		if exit {
-			break
-		}
-	}
 	wg.Wait()
 }
