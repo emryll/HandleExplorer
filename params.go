@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
@@ -85,4 +86,46 @@ func ParseSingleParameter(header string, data []byte) (Parameter, error) {
 		}
 	}
 	return param, nil
+}
+
+// Print the provided parameters
+func PrintParameters(params map[string]Parameter) {
+	for _, param := range params {
+		fmt.Printf("\t%s: %v", param.Name, param.GetValue())
+	}
+}
+
+// Return the dynamic parameter as a regular Go value.
+// This method is generally used to print a value with "%v"
+// Array values are returned as a list of bullet points (i.e. string)
+func (p Parameter) GetValue() any {
+	switch p.Type {
+	case PARAMETER_ANSISTRING:
+		return GetAnsiValue(p.Buffer)
+	case PARAMETER_ASTR_ARRAY:
+		return GetStringArrayFromBuffer(p.Buffer)
+	case PARAMETER_BOOLEAN:
+		return binary.LittleEndian.Uint32(p.Buffer) == 1
+	case PARAMETER_BOOLEAN_ARRAY:
+		return GetBooleanArrayFromBuffer(p.Buffer)
+	case PARAMETER_UINT32:
+		val := binary.LittleEndian.Uint32(p.Buffer)
+		if p.Domain == 0 {
+			return val
+		}
+		//return InterpretBitmaskValue((Bitmask)(val), p.Domain)
+	case PARAMETER_UINT32_ARRAY:
+		return GetUint32ArrayFromBuffer(p.Buffer)
+	case PARAMETER_UINT64:
+		return binary.LittleEndian.Uint64(p.Buffer)
+	case PARAMETER_UINT64_ARRAY:
+		return GetUint64ArrayFromBuffer(p.Buffer)
+	case PARAMETER_POINTER:
+		return fmt.Sprintf("%p", binary.LittleEndian.Uint64(p.Buffer))
+	case PARAMETER_POINTER_ARRAY:
+		return GetPointerArrayFromBuffer(p.Buffer)
+	case PARAMETER_BYTES:
+		return p.Buffer
+	}
+	return "(invalid parameter)"
 }
