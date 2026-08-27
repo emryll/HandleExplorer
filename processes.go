@@ -77,8 +77,14 @@ func ScanProcesses() error {
 // Add process to process table and the correct graph.
 // If the process already exists, any missing data is filled.
 func RegisterProcess(entry *windows.ProcessEntry32) {
+	name := windows.UTF16ToString(entry.ExeFile[:])
 	if ps := g_ProcessTable.LookupProcess(entry.ProcessID); ps != nil {
-		return
+		if filepath.Base(ps.Path) == name {
+			return // technically could still be different...
+		}
+		// new process with same pid, clear old one
+		HandleTable.Remove(entry.ProcessID)
+		g_ObjectAccessRegistry.RemoveEntriesByProcess(entry.ProcessID)
 	}
 	process := CreateProcessEntry(entry)
 	g_ProcessTable.AddProcess(process)
@@ -146,24 +152,13 @@ func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
 	defer g_ProcessTable.mu.RUnlock()
 
 	//* make sure all processes are found in the process snapshot
-	for pid, ps := range g_ProcessTable.Table {
-		var newEntry *Process
-		if pe32, exists := processes[pid]; exists {
-			name := windows.UTF16ToString(pe32.ExeFile[:])
-			if name == filepath.Base(ps.Path) {
-				continue
-			}
-			newEntry = CreateProcessEntry(pe32.ProcessID, pe32.ParentProcessID, name)
+	for pid := range g_ProcessTable.Table {
+		if _, exists := processes[pid]; exists {
+			continue
 		}
 		g_ProcessTable.RemoveProcess(pid)
 		g_ObjectAccessRegistry.RemoveEntriesByProcess(pid)
 		HandleTable.Remove(pid)
-
-		// potential edge case: new process with same pid
-		//? would this cause issues with handlecache?
-		if newEntry != nil {
-			g_ProcessTable.AddProcess(newEntry)
-		}
 	}
 }
 
