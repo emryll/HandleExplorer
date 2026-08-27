@@ -129,3 +129,47 @@ func (p Parameter) GetValue() any {
 	}
 	return "(invalid parameter)"
 }
+
+// Read the type of a (v4) parameter from the header string
+func GetParameterType(ptype string) uint8 {
+	switch ptype[0] {
+	case 's':
+		return uint8(PARAMETER_ANSISTRING)
+	case 'S':
+		return uint8(PARAMETER_ASTR_ARRAY)
+	case 'd':
+		return uint8(PARAMETER_UINT32)
+	case 'D':
+		return uint8(PARAMETER_UINT32_ARRAY)
+	case 'q':
+		return uint8(PARAMETER_UINT64)
+	case 'Q':
+		return uint8(PARAMETER_UINT64_ARRAY)
+	case 'p':
+		return uint8(PARAMETER_POINTER)
+	case 'P':
+		return uint8(PARAMETER_POINTER_ARRAY)
+	case 'b':
+		return uint8(PARAMETER_BOOLEAN)
+	case 'B':
+		return uint8(PARAMETER_BOOLEAN_ARRAY)
+	case 'x':
+		return uint8(PARAMETER_BYTES)
+	}
+	return 0
+}
+
+func (p Parameter) Empty() bool {
+	return len(p.Buffer) == 0
+}
+
+func (h HandleEntry) GetParameter(name string) Parameter {
+	if param, exists := h.Parameters[name]; exists {
+		return param
+	}
+	return Parameter{}
+}
+
+func (b Bitmask) HasFlags(flags Bitmask) bool {
+	return (b & flags) == flags
+}
