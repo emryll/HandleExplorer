@@ -59,6 +59,19 @@ func PrintDescription() {
 	fmt.Println("\tTo view available commands, run \"help\"")
 }
 
+// Get the access mask as a single printable value. No arrays
+func (e *AccessEntry) GetAccessAsString() any {
+	domain := GetDomainFromObject(e.Object)
+	return InterpretBitmaskValue((Bitmask)(e.Access), domain)
+}
+
+// Get the access mask as a list of flags in human readable form.
+func (e *AccessEntry) GetAccessFlagsAsString() []string {
+	domain := GetDomainFromObject(e.Object)
+	// last parameter as true guarantees []string return value
+	return InterpretBitmaskValue((Bitmask)(e.Access), domain, true).([]string)
+}
+
 // Returns string interpretation of all contained flags,
 // or if it couldn't find corresponding enums, it returns raw value
 func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
@@ -105,4 +118,39 @@ func parseAccessString(accessList string) Bitmask {
 		}
 	}
 	return mask
+}
+
+func GetDomainFromObject(objType uint32) uint8 {
+	var domain uint8
+	switch objType {
+	case OBJ_TYPE_PROCESS:
+		domain = DOMAIN_PROCESS
+	case OBJ_TYPE_THREAD:
+		domain = DOMAIN_THREAD
+	case OBJ_TYPE_EVENT:
+		domain = DOMAIN_EVENT
+	case OBJ_TYPE_MUTANT:
+		domain = DOMAIN_MUTEX
+	case OBJ_TYPE_TIMER, OBJ_TYPE_IRTIMER:
+		domain = DOMAIN_TIMER
+	case OBJ_TYPE_SEMAPHORE:
+		domain = DOMAIN_SEMAPHORE
+	case OBJ_TYPE_SECTION:
+		domain = DOMAIN_SECTION
+	case OBJ_TYPE_FILE:
+		domain = DOMAIN_FILE
+	case OBJ_TYPE_PIPE:
+		domain = DOMAIN_PIPE
+	case OBJ_TYPE_JOB:
+		domain = DOMAIN_JOB
+	case OBJ_TYPE_KEY:
+		domain = DOMAIN_KEY
+	case OBJ_TYPE_TOKEN:
+		domain = DOMAIN_TOKEN
+	case OBJ_TYPE_DESKTOP:
+		domain = DOMAIN_DESKTOP
+	default:
+		domain = DOMAIN_GLOBAL
+	}
+	return domain
 }
