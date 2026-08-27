@@ -6,6 +6,32 @@ package main
 //?      This is done to optimize each structure for their own purposes.         |
 //?==============================================================================+
 
+// Find all processes whose object access overlaps with that of the given process.
+// Result is a map where key is pid and value is how many times it overlapped.
+// If no processes with overlapping object access are found, the result is nil.
+func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) map[uint32]int {
+	reg.mu.RLock()
+	defer reg.mu.RUnlock()
+
+	if len(reg.ProcessLookup[pid]) == 0 {
+		return nil
+	}
+
+	overlapping := make(map[uint32]int)
+	for key := range reg.ProcessLookup[pid] {
+		if key.Name == "" {
+			continue // cant track anon objects currently :(
+		}
+		// add all other processes that accessed the named object
+		for objKey := range reg.ObjectLookup[key.ObjType] {
+			if objKey.Name == key.Name {
+				overlapping[objKey.Pid]++
+			}
+		}
+	}
+	return overlapping
+}
+
 // Find all objects accessed by several different processes.
 // This method will read lock the object access registry.
 func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster {
