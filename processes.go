@@ -147,15 +147,16 @@ func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath ...string) *Proces
 // This is intended for a second pass (first seen as parent)
 func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 	// this is ugly burger code, don't worry about that ;)
-	var handle windows.Handle
+	var phandle *windows.Handle
 	if ps.Path == "" {
 		var err error // to avoid shadow variable bug
 		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, entry.ProcessID)
 		if err != nil {
+			phandle = &handle
 			defer windows.CloseHandle(handle)
 		}
 
-		if handle != nil {
+		if phandle != nil {
 			path, err := GetProcessExecutable(handle)
 			if err == nil {
 				ps.Path = path
@@ -167,8 +168,8 @@ func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 		}
 	}
 
-	if handle != nil {
-		elevated, err := IsProcessElevated(handle)
+	if phandle != nil {
+		elevated, err := IsProcessElevated(*phandle)
 		if err == nil {
 			ps.Elevated = elevated
 		}
@@ -178,7 +179,7 @@ func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 	if filepath.Base(ps.Path) != ps.Path {
 		status, err := IsSigned(ps.Path)
 		if err == nil {
-			ps.SigStatus = uint32(status)
+			ps.SigStatus = status
 		}
 	}
 
@@ -190,7 +191,7 @@ func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
 		parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ps.ParentPid)
 		if err != nil {
 			defer windows.CloseHandle(parentHandle)
-			path, err := GetProcessExecutable(handle)
+			path, err := GetProcessExecutable(*phandle)
 			if err == nil {
 				ps.ParentPath = path
 			}
@@ -401,4 +402,18 @@ func GetParentPid(handle windows.Handle) (uint32, error) {
 		return 0, err
 	}
 	return uint32(pbi.InheritedFromUniqueProcessId), nil
+}
+
+func findProcesses(name string) []uint32 {
+	g_ObjectAccessRegistry.mu.RLock()
+	defer g_ObjectAccessRegistry.mu.RLock()
+
+	var pids []uint32
+	for pid, _ := range g_ObjectAccessRegistry.ProcessLookup {
+		path := LookupProcessPath(pid)
+		if name == path || name == filepath.Base(path) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
