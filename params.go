@@ -159,6 +159,81 @@ func GetParameterType(ptype string) uint8 {
 	return 0
 }
 
+// Portrays the content of a C string array buffer
+// Used to portray the contents of a dynamic Parameter
+func GetStringArrayFromBuffer(buf []byte) string {
+	var builder strings.Builder
+	for i := 0; i < len(buf); {
+		str := GetAnsiValue(buf[i:])
+		if len(str) == 0 {
+			break
+		}
+		builder.WriteString("\n\t- ")
+		builder.WriteString(str)
+		i += len(str)
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+// Portrays the content of a uint32 array buffer
+// Used to portray the contents of a dynamic Parameter
+func GetUint32ArrayFromBuffer(buf []byte) string {
+	var builder strings.Builder
+	for i := 0; i < len(buf); i += 4 {
+		val := binary.LittleEndian.Uint32(buf[i:])
+		builder.WriteString("\n\t- ")
+		builder.WriteString(strconv.FormatUint(uint64(val), 10))
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+// Portrays the content of a uint64 array buffer
+// Used to portray the contents of a dynamic Parameter
+func GetUint64ArrayFromBuffer(buf []byte) string {
+	var builder strings.Builder
+	for i := 0; i < len(buf); i += 8 {
+		val := binary.LittleEndian.Uint64(buf[i:])
+		builder.WriteString("\n\t- ")
+		builder.WriteString(strconv.FormatUint(val, 10))
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+// Portrays the content of a 64-bit pointer array buffer
+// Used to portray the contents of a dynamic Parameter
+func GetPointerArrayFromBuffer(buf []byte) string {
+	var builder strings.Builder
+	for i := 0; i < len(buf); i += 8 {
+		val := binary.LittleEndian.Uint64(buf[i:])
+		builder.WriteString("\n\t- ")
+		builder.WriteString("0x")
+		builder.WriteString(strconv.FormatUint(val, 16))
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+// Portrays the content of a boolean array buffer
+// Used to portray the contents of a dynamic Parameter
+// This assumes 4 bytes are used for a boolean
+func GetBooleanArrayFromBuffer(buf []byte) string {
+	var builder strings.Builder
+	for i := 0; i < len(buf); i += 4 {
+		val := binary.LittleEndian.Uint32(buf[i:])
+		builder.WriteString("\n\t- ")
+		if val == 0 {
+			builder.WriteString("FALSE")
+		} else {
+			builder.WriteString("TRUE")
+		}
+	}
+	builder.WriteString("\n")
+	return builder.String()
+}
+
 func (p Parameter) Empty() bool {
 	return len(p.Buffer) == 0
 }
