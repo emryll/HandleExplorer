@@ -1,74 +1,53 @@
 package main
 
-import "fmt"
+//?==============================================================================+
+//?     This file is responsible for managing and searching object access.       |
+//?    It is done using a secondary structure from the raw handle table cache.   |
+//?      This is done to optimize each structure for their own purposes.         |
+//?==============================================================================+
 
-func (reg *ObjectAccessRegistry) PrintOverlapping() {
-	reg.mu.Lock()
-	defer reg.mu.Unlock()
+// Find all objects accessed by several different processes.
+// This method will read lock the object access registry.
+func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster {
+	reg.mu.RLock()
+	defer reg.mu.RUnlock()
 
-	accessed := make(map[ProcessAccessKey][]uint32)
+	var (
+		overlapping []Cluster
+		accessed    = make(map[ProcessAccessKey][]uint32)
+	)
+
+	//TODO: also calculate the stats while youre at it
+	//TODO: median, avg, directory distribution, exe distribution
+
 	for pid, objs := range reg.ProcessLookup {
 		for key := range objs {
+			if filter.ObjType != 0 && key.ObjType != filter.ObjType {
+				continue
+			}
+			if key.Name == "" {
+				continue // cant track anon objects currently :(
+			}
+			if filter.Name != "" && key.Name != filter.Name {
+				continue
+			}
 			accessed[key] = append(accessed[key], pid)
 		}
 	}
 
-	var (
-		types          = make(map[uint32]int)
-		overlap_counts []int
-		total_counts   int
-		overlapping    int
-		largest        int
-	)
-
-	// Print overlapping
 	for key, pids := range accessed {
-		if len(pids) < 2 {
+		cluster := Cluster{
+			ObjType: key.ObjType,
+			ObjName: key.Name,
+		}
+		if filter.MinSize > 0 && len(pids) < filter.MinSize {
 			continue
 		}
-		overlapping++
-		types[key.ObjType]++
-		total_counts += len(pids)
-		overlap_counts = append(overlap_counts, len(pids))
-		if len(pids) > largest {
-			largest = len(pids)
-		}
-
-		fmt.Printf("\n%s\n", stars)
-		fmt.Printf("\nOverlapping access to %s\n", GetTypeName(key.ObjType))
-		fmt.Printf("\tName: %s\n", key.Name)
-		fmt.Printf("\nPids: ")
-		for _, pid := range pids {
-			fmt.Printf("%d ", pid)
-		}
-		fmt.Println()
-	}
-	fmt.Printf("\n%s\n", stars)
-
-	var (
-		median float32
-		avg    float32
-	)
-
-	avg = float32(total_counts) / float32(overlapping)
-
-	if overlapping%2 == 0 {
-		upperMidIndex := overlapping / 2
-		totalMiddle := overlap_counts[upperMidIndex-1]
-		totalMiddle += overlap_counts[upperMidIndex]
-		median = float32(totalMiddle) / 2
-	} else {
-		midIndex := overlapping / 2
-		median = float32(overlap_counts[midIndex])
+		cluster.Members = append(cluster.Members, pids...)
+		overlapping = append(overlapping, cluster)
 	}
 
-	fmt.Printf("\n\t[ Total of %d overlapping ; avg size %.1f ; median size %.1f ]\n", overlapping, avg, median)
-	fmt.Printf("\n%s\n", stars)
-	fmt.Println("\tObject type statistics:\n")
-	for objType, count := range types {
-		fmt.Printf("\t* %s : %d instances\n", GetTypeName(objType), count)
-	}
-	fmt.Printf("\n%s\n", stars)
+	return overlapping
 }
 
 // Add an interaction to the registry or update existing.
