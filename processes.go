@@ -77,32 +77,19 @@ func ScanProcesses() error {
 // Add process to process table and the correct graph.
 // If the process already exists, any missing data is filled.
 func RegisterProcess(entry *windows.ProcessEntry32) {
-	name := windows.UTF16ToString(entry.ExeFile[:])
 	if ps := g_ProcessTable.LookupProcess(entry.ProcessID); ps != nil {
-		ps.fillMissing(entry) // second pass with ProcessEntry32
 		return
 	}
-	process := CreateProcessEntry(entry.ProcessID, entry.ParentProcessID, name)
+	process := CreateProcessEntry(entry)
 	g_ProcessTable.AddProcess(process)
-
-	parent := g_ProcessTable.LookupProcess(entry.ParentProcessID)
-	if parent == nil {
-		pps := CreateProcessEntry(entry.ParentProcessID, 0)
-		g_ProcessTable.AddProcess(pps)
-		parent = pps
-	}
 }
 
 // Create an initial process entry with basic details.
 // This does not add the process entry to the process table.
-func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath ...string) *Process {
+func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 	entry := Process{
-		ProcessId: pid,
-		ParentPid: ppid,
-	}
-	// used as fallback
-	if len(fallbackPath) > 0 {
-		entry.Path = fallbackPath[0]
+		ProcessId: pe32.ProcessID,
+		ParentPid: pe32.ParentProcessID,
 	}
 
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
@@ -124,10 +111,14 @@ func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath ...string) *Proces
 			entry.Elevated = elevated
 		}
 	} else {
-		PrintError("Failed to open process %d: %v\n", pid, err)
+		PrintError("Failed to open process %d: %v\n", entry.ProcessId, err)
 	}
 
-	if ppid == 0 {
+	if entry.Path == "" {
+		entry.Path = windows.UTF16ToString(pe32.ExeFile[:])
+	}
+
+	if entry.ParentPid == 0 || entry.ParentPid == 4 {
 		return &entry
 	}
 
@@ -141,62 +132,6 @@ func CreateProcessEntry(pid uint32, ppid uint32, fallbackPath ...string) *Proces
 		}
 	}
 	return &entry
-}
-
-// Fill missing fields of process structure.
-// This is intended for a second pass (first seen as parent)
-func (ps *Process) fillMissing(entry *windows.ProcessEntry32) {
-	// this is ugly burger code, don't worry about that ;)
-	var phandle *windows.Handle
-	if ps.Path == "" {
-		var err error // to avoid shadow variable bug
-		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, entry.ProcessID)
-		if err != nil {
-			phandle = &handle
-			defer windows.CloseHandle(handle)
-		}
-
-		if phandle != nil {
-			path, err := GetProcessExecutable(handle)
-			if err == nil {
-				ps.Path = path
-			}
-		}
-		// fallback name
-		if ps.Path == "" {
-			ps.Path = windows.UTF16ToString(entry.ExeFile[:])
-		}
-	}
-
-	if phandle != nil {
-		elevated, err := IsProcessElevated(*phandle)
-		if err == nil {
-			ps.Elevated = elevated
-		}
-	}
-	// only check if you have the full path,
-	// otherwise the checks can be fooled
-	if filepath.Base(ps.Path) != ps.Path {
-		status, err := IsSigned(ps.Path)
-		if err == nil {
-			ps.SigStatus = status
-		}
-	}
-
-	// fill parent info
-	if ps.ParentPid == 0 {
-		ps.ParentPid = entry.ParentProcessID
-	}
-	if ps.ParentPath == "" && ps.ParentPid != 0 {
-		parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ps.ParentPid)
-		if err != nil {
-			defer windows.CloseHandle(parentHandle)
-			path, err := GetProcessExecutable(*phandle)
-			if err == nil {
-				ps.ParentPath = path
-			}
-		}
-	}
 }
 
 func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
