@@ -77,6 +77,36 @@ type ObjectAccessKey struct {
 	Name string
 }
 
+type Cluster struct {
+	Members []uint32
+	ObjType uint32
+	ObjName string
+	Params  map[string]Parameter
+}
+
+type SearchFilter struct {
+	ObjType []uint32
+	Names   []string
+	Pids    []uint32
+	Access  Bitmask
+}
+
+type ProcessFilter struct {
+	Path      string
+	DirFilter []string
+	Parent    []string // pid or path
+	SigStatus int
+	Elevated  bool
+	ObjTypes  map[string]bool
+	Pids      []uint32
+}
+
+type ClusterFilter struct {
+	MinSize int
+	ObjType uint32
+	ObjName string
+}
+
 //*=========================[ Processes ]===========================
 
 type Process struct {
@@ -91,4 +121,10 @@ type Process struct {
 type ProcessTable struct {
 	mu    sync.RWMutex
 	Table map[uint32]*Process
+}
+
+//*=========================[ Windows ]================================
+
+type TOKEN_ELEVATION struct {
+	TokenIsElevated uint32
 }
