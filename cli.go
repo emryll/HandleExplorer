@@ -95,19 +95,16 @@ func CliPsCommand(tokens []string) {
 	if len(tokens) == 0 {
 		filter = PsFilterSelectionMenu()
 	}
-	//TODO: use parsePsTargetString
-	pid, err := strconv.Atoi(tokens[0])
-	if err == nil { // view process directly, single pid
-		PrintProcess(uint32(pid))
-		return
-	}
-	// get pids from path
-	pids := findProcesses(tokens[0])
-	if len(pids) == 0 {
-		PrintError("Couldn't find any processes with \"%s\"", tokens[0])
-		return
-	}
+	pids := parsePsTargetString(tokens)
 	filter.Pids = pids
+
+	if len(pids) == 1 {
+		PrintProcess(pids[0])
+		return
+	} else if len(pids) == 0 {
+		fmt.Printf("No processes found matching \"%v\"", tokens)
+		return
+	}
 
 	results := filter.Search()
 	if selected := RenderList(results); selected != nil {
