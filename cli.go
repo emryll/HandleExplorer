@@ -1,14 +1,46 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/fatih/color"
 )
 
 //?========================================================+
 //?   This file is responsible for parsing and executing   |
 //?    commands from the user in the interactive CLI.      |
 //?========================================================+
+
+//*===========================[ Command parsing ]===================================
+
+// Main loop for simple command-line user interface.
+// Returns when the user enters an exit command and call cancel.
+func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
+	defer wg.Done()
+
+	reader := bufio.NewReader(os.Stdin)
+	g := color.New(color.FgHiGreen, color.Bold)
+	for {
+		g.Printf(" $ ")
+		command := GetInput(reader)
+		if command == "" {
+			continue
+		}
+
+		tokens := strings.Fields(command)
+		exit := CliParseCommand(tokens)
+		if exit {
+			cancel() // shutdown command
+			return
+		}
+	}
+}
 
 // Parse a command and respond accordingly.
 // True return value indicates program should exit.
@@ -21,16 +53,14 @@ func CliParseCommand(tokens []string) bool {
 		return true
 	case "help", "?":
 		CliHelpCommand(tokens[1:])
-	case "info", "overview", "general", "status":
-		CliOverview()
 	case "find", "f":
 		CliFindCommand(tokens[1:])
 	case "ps", "process", "p":
 		CliPsCommand(tokens[1:])
 	case "clusters", "c":
 		CliClustersCommand(tokens[1:])
-	case "outliers":
-		CliOutliersCommand(tokens[1:])
+	/*case "outliers":
+	CliOutliersCommand(tokens[1:])*/
 	case "bm":
 		if BenchmarkRegistry == nil || len(BenchmarkRegistry) == 0 {
 			fmt.Println("No benchmark samples collected.")
@@ -52,6 +82,35 @@ func CliParseCommand(tokens []string) bool {
 		fmt.Println("Run \"help\" to view available commands.")
 	}
 	return false
+}
+
+//*==================================[ Commands ]======================================
+
+// Main routine for parsing and executing the
+// "ps" command (search for processes / view process)
+func CliPsCommand(tokens []string) {
+	var filter ProcessFilter
+	if len(tokens) == 0 {
+		filter = PsFilterSelectionMenu()
+	}
+	//TODO: use parsePsTargetString
+	pid, err := strconv.Atoi(tokens[0])
+	if err == nil { // view process directly, single pid
+		PrintProcess(uint32(pid))
+		return
+	}
+	// get pids from path
+	pids := findProcesses(tokens[0])
+	if len(pids) == 0 {
+		PrintError("Couldn't find any processes with \"%s\"", tokens[0])
+		return
+	}
+	filter.Pids = pids
+
+	results := filter.Search()
+	if selected := RenderList(results); selected != nil {
+		selected.Print()
+	}
 }
 
 func CliHelpCommand(tokens []string) {
