@@ -72,6 +72,19 @@ func (e *AccessEntry) GetAccessFlagsAsString() []string {
 	return InterpretBitmaskValue((Bitmask)(e.Access), domain, true).([]string)
 }
 
+// Get the access mask as a single printable value. No arrays
+func (h *HandleEntry) GetAccessAsString() any {
+	domain := GetDomainFromObject(h.Type)
+	return InterpretBitmaskValue((Bitmask)(h.Access), domain)
+}
+
+// Get the access mask as a list of flags in human readable form.
+func (h *HandleEntry) GetAccessFlagsAsString() []string {
+	domain := GetDomainFromObject(h.Type)
+	// last parameter as true guarantees []string return value
+	return InterpretBitmaskValue((Bitmask)(h.Access), domain, true).([]string)
+}
+
 // Returns string interpretation of all contained flags,
 // or if it couldn't find corresponding enums, it returns raw value
 func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
@@ -209,4 +222,12 @@ func GetDomainFromObject(objType uint32) uint8 {
 		domain = DOMAIN_GLOBAL
 	}
 	return domain
+}
+
+// Print the string, or a dash if empty
+func orDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "-"
+	}
+	return s
 }
