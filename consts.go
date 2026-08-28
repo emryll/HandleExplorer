@@ -1,80 +1,21 @@
 package main
 
-import "golang.org/x/sys/windows"
+import (
+	"math/bits"
+	"sort"
 
-// Internal enums for object types.
-// The type enums used by windows are not stable.
+	"golang.org/x/sys/windows"
+)
+
 const (
-	OBJ_TYPE_UNKNOWN                 = 0
-	OBJ_TYPE_PROCESS                 = 1
-	OBJ_TYPE_THREAD                  = 2
-	OBJ_TYPE_EVENT                   = 3
-	OBJ_TYPE_SEMAPHORE               = 4
-	OBJ_TYPE_MUTANT                  = 5
-	OBJ_TYPE_SECTION                 = 6
-	OBJ_TYPE_SESSION                 = 7
-	OBJ_TYPE_FILE                    = 8
-	OBJ_TYPE_KEY                     = 9
-	OBJ_TYPE_DIRECTORY               = 10
-	OBJ_TYPE_SYMLINK                 = 11
-	OBJ_TYPE_TOKEN                   = 12
-	OBJ_TYPE_JOB                     = 13
-	OBJ_TYPE_DESKTOP                 = 14
-	OBJ_TYPE_PARTITION               = 15
-	OBJ_TYPE_DEBUG_OBJECT            = 16
-	OBJ_TYPE_CALLBACK                = 17
-	OBJ_TYPE_ADAPTER                 = 18
-	OBJ_TYPE_CONTROLLER              = 19
-	OBJ_TYPE_DEVICE                  = 20
-	OBJ_TYPE_DRIVER                  = 21
-	OBJ_TYPE_IO_RING                 = 22
-	OBJ_TYPE_TM_TM                   = 23
-	OBJ_TYPE_TM_TX                   = 24
-	OBJ_TYPE_TM_RM                   = 25
-	OBJ_TYPE_TM_EN                   = 26
-	OBJ_TYPE_TIMER                   = 27
-	OBJ_TYPE_IRTIMER                 = 28
-	OBJ_TYPE_PROFILE                 = 29
-	OBJ_TYPE_KEYED_EVENT             = 30
-	OBJ_TYPE_WINDOW_STATION          = 31
-	OBJ_TYPE_COMPOSITION             = 32
-	OBJ_TYPE_RAW_INPUT_MANAGER       = 33
-	OBJ_TYPE_CORE_MESSAGING          = 34
-	OBJ_TYPE_ACTIVATION_OBJECT       = 35
-	OBJ_TYPE_TP_WORKER_FACTORY       = 36
-	OBJ_TYPE_IO_COMPLETION           = 37
-	OBJ_TYPE_WAIT_COMPLETION_PACKET  = 38
-	OBJ_TYPE_USER_APC_RESERVE        = 39
-	OBJ_TYPE_IO_COMP_RESERVE         = 40
-	OBJ_TYPE_ACTIVITY_REFERENCE      = 41
-	OBJ_TYPE_PS_STATE_CHANGE         = 42
-	OBJ_TYPE_THREAD_STATE_CHANGE     = 43
-	OBJ_TYPE_CPU_PARTITION           = 44
-	OBJ_TYPE_PS_SILO_CTX_PAGED       = 45
-	OBJ_TYPE_PS_SILO_CTX_NON_PAGED   = 46
-	OBJ_TYPE_REGISTRY_TRANSACTION    = 47
-	OBJ_TYPE_DMA_ADAPTER             = 48
-	OBJ_TYPE_ALPC_PORT               = 49
-	OBJ_TYPE_ENERGY_TRACKER          = 50
-	OBJ_TYPE_POWER_REQUEST           = 51
-	OBJ_TYPE_WMI_GUID                = 52
-	OBJ_TYPE_ETW_REGISTRATION        = 53
-	OBJ_TYPE_ETW_SESSION_DEMUX_ENTRY = 54
-	OBJ_TYPE_ETW_CONSUMER            = 55
-	OBJ_TYPE_PCW_OBJECT              = 56
-	OBJ_TYPE_COVERAGE_SAMPLER        = 57
-	OBJ_TYPE_FILTER_CONNECTION_PORT  = 58
-	OBJ_TYPE_FILTER_COMM_PORT        = 59
-	OBJ_TYPE_NDIS_CM_STATE           = 60
-	OBJ_TYPE_DXGK_SHARED_RSRC        = 61
-	OBJ_TYPE_DXGK_SHARED_MUTEX       = 62
-	OBJ_TYPE_DXGK_SHARED_SYNC        = 63
-	OBJ_TYPE_DXGK_SHARED_SWAP        = 64
-	OBJ_TYPE_DXGK_DISPLAY_MGR        = 65
-	OBJ_TYPE_DXGK_SHARED_BUNDLE      = 66
-	OBJ_TYPE_DXGK_SHARED_SESSION     = 67
-	OBJ_TYPE_DXGK_COMPOSITION        = 68
-	OBJ_TYPE_V_REG_CONFIG_CONTEXT    = 69
+	CERT_VALID          = 1
+	CERT_MISSING        = 1
+	CERT_HASH_MISMATCH  = 3
+	CERT_EXP_DISTRUST   = 4
+	CERT_UNTRUSTED_CA   = 5
+	CERT_UNTRUSTED_ROOT = 6
+	CERT_REVOKED        = 7
+	CERT_EXPIRED        = 8
 )
 
 const (
@@ -89,6 +30,12 @@ const (
 	PARAMETER_POINTER       = 5
 	PARAMETER_POINTER_ARRAY = 50
 	PARAMETER_BYTES         = 7
+)
+
+var (
+	PS_REFRESH_INTERVAL     = 10
+	HANDLE_REFRESH_INTERVAL = 30
+	HANDLE_CACHE_EXPIRATION = 10
 )
 
 var ( //* Handle Cache Cleanup modifiers
@@ -166,6 +113,61 @@ type BitFlag struct {
 // in this one there are no duplicates
 var valToEnum map[uint8][]BitFlag // domain key
 
+func fillReverseEnumLookup() {
+	if len(valToEnum) > 0 {
+		return
+	}
+	valToEnum = make(map[uint8][]BitFlag)
+	entries := make(map[uint8]map[Bitmask]string)
+	//* initially add only to entries for deduplication
+	for enum, entry := range enumToVal {
+		if entries[entry.Domain] == nil {
+			entries[entry.Domain] = make(map[Bitmask]string)
+		}
+		if existing, exists := entries[entry.Domain][entry.Value]; !exists || len(enum) > len(existing) {
+			entries[entry.Domain][entry.Value] = enum
+		}
+	}
+	//* convert map to slice
+	for domain, enums := range entries {
+		for val, enum := range enums {
+			valToEnum[domain] = append(valToEnum[domain], BitFlag{Name: enum, Value: val})
+		}
+		//* sort slice from most bits set to least
+		sort.Slice(valToEnum[domain], func(i, j int) bool {
+			return bits.OnesCount32(uint32(valToEnum[domain][i].Value)) > bits.OnesCount32(uint32(valToEnum[domain][j].Value))
+		})
+	}
+}
+
+const (
+	THREAD_ALL_ACCESS = 0x1FFFFF
+
+	JOB_OBJECT_ALL_ACCESS              = 0x1F003F
+	JOB_OBJECT_ASSIGN_PROCESS          = 0x1
+	JOB_OBJECT_SET_ATTRIBUTES          = 0x2
+	JOB_OBJECT_SET_SECURITY_ATTRIBUTES = 0x10
+	JOB_OBJECT_TERMINATE               = 0x8
+	JOB_OBJECT_QUERY                   = 0x4
+
+	DESKTOP_CREATEMENU      = 0x4
+	DESKTOP_CREATEWINDOW    = 0x2
+	DESKTOP_ENUMERATE       = 0x40
+	DESKTOP_HOOKCONTROL     = 0x8
+	DESKTOP_JOURNALPLAYBACK = 0x20
+	DESKTOP_JOURNALRECORD   = 0x10
+	DESKTOP_READOBJECTS     = 0x1
+	DESKTOP_WRITEOBJECTS    = 0x80
+	DESKTOP_SWITCHDESKTOP   = 0x100
+
+	SECTION_ALL_ACCESS  = 0xF001F
+	SECTION_EXTEND_SIZE = 0x10
+	SECTION_MAP_EXECUTE = 0x8
+	SECTION_MAP_WRITE   = 0x2
+	SECTION_MAP_READ    = 0x4
+	SECTION_QUERY       = 0x1
+)
+
 // dictionary to allow for using string enums for bitflags
 var enumToVal = map[string]Enum{
 	"DELETE":       Enum{Domain: DOMAIN_GLOBAL, Value: windows.DELETE},
@@ -199,7 +201,7 @@ var enumToVal = map[string]Enum{
 	"PROCESS_VM_READ":                   Enum{Domain: DOMAIN_PROCESS, Value: windows.PROCESS_VM_READ},
 	"PROCESS_VM_WRITE":                  Enum{Domain: DOMAIN_PROCESS, Value: windows.PROCESS_VM_WRITE},
 
-	"THREAD_ALL_ACCESS":                Enum{Domain: DOMAIN_THREAD, Value: windows.THREAD_ALL_ACCESS},
+	"THREAD_ALL_ACCESS":                Enum{Domain: DOMAIN_THREAD, Value: THREAD_ALL_ACCESS},
 	"THREAD_DIRECT_IMPERSONATION":      Enum{Domain: DOMAIN_THREAD, Value: windows.THREAD_DIRECT_IMPERSONATION},
 	"THREAD_GET_CONTEXT":               Enum{Domain: DOMAIN_THREAD, Value: windows.THREAD_GET_CONTEXT},
 	"THREAD_IMPERSONATE":               Enum{Domain: DOMAIN_THREAD, Value: windows.THREAD_IMPERSONATE},
@@ -213,7 +215,7 @@ var enumToVal = map[string]Enum{
 	"THREAD_TERMINATE":                 Enum{Domain: DOMAIN_THREAD, Value: windows.THREAD_TERMINATE},
 
 	"EVENT_ALL_ACCESS":   Enum{Domain: DOMAIN_EVENT, Value: windows.EVENT_ALL_ACCESS},
-	"EVENT_MODIFY_STATE": Enum{Domain: DOMAIN_EVENT, Value: windows.EVENT_STATE},
+	"EVENT_MODIFY_STATE": Enum{Domain: DOMAIN_EVENT, Value: windows.EVENT_MODIFY_STATE},
 
 	"SEMAPHORE_ALL_ACCESS":   Enum{Domain: DOMAIN_SEMAPHORE, Value: windows.SEMAPHORE_ALL_ACCESS},
 	"SEMAPHORE_MODIFY_STATE": Enum{Domain: DOMAIN_SEMAPHORE, Value: windows.SEMAPHORE_MODIFY_STATE},
@@ -270,7 +272,7 @@ var enumToVal = map[string]Enum{
 	"TOKEN_ADJUST_GROUPS":     Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_ADJUST_GROUPS},
 	"TOKEN_ADJUST_PRIVILEGES": Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_ADJUST_PRIVILEGES},
 	"TOKEN_ADJUST_SESSIONID":  Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_ADJUST_SESSIONID},
-	"TOKEN_ADJUST_PRIMARY":    Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_ADJUST_PRIMARY},
+	"TOKEN_ASSIGN_PRIMARY":    Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_ASSIGN_PRIMARY},
 	"TOKEN_DUPLICATE":         Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_DUPLICATE},
 	"TOKEN_EXECUTE":           Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_EXECUTE},
 	"TOKEN_IMPERSONATE":       Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_IMPERSONATE},
@@ -279,22 +281,22 @@ var enumToVal = map[string]Enum{
 	"TOKEN_READ":              Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_READ},
 	"TOKEN_WRITE":             Enum{Domain: DOMAIN_TOKEN, Value: windows.TOKEN_WRITE},
 
-	"JOB_OBJECT_ALL_ACCESS":              Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_ALL_ACCESS},
-	"JOB_OBJECT_ASSIGN_PROCESS":          Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_ASSIGN_PROCESS},
-	"JOB_OBJECT_QUERY":                   Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_QUERY},
-	"JOB_OBJECT_SET_ATTRIBUTES":          Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_SET_ATTRIBUTES},
-	"JOB_OBJECT_SET_SECURITY_ATTRIBUTES": Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_SET_SECURITY_ATTRIBUTES},
-	"JOB_OBJECT_TERMINATE":               Enum{Domain: DOMAIN_JOB, Value: windows.JOB_OBJECT_TERMINATE},
+	"JOB_OBJECT_ALL_ACCESS":              Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_ALL_ACCESS},
+	"JOB_OBJECT_ASSIGN_PROCESS":          Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_ASSIGN_PROCESS},
+	"JOB_OBJECT_QUERY":                   Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_QUERY},
+	"JOB_OBJECT_SET_ATTRIBUTES":          Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_SET_ATTRIBUTES},
+	"JOB_OBJECT_SET_SECURITY_ATTRIBUTES": Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_SET_SECURITY_ATTRIBUTES},
+	"JOB_OBJECT_TERMINATE":               Enum{Domain: DOMAIN_JOB, Value: JOB_OBJECT_TERMINATE},
 
-	"DESKTOP_CREATEMENU":      Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_CREATEMENU},
-	"DESKTOP_CREATEWINDOW":    Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_CREATEWINDOW},
-	"DESKTOP_ENUMERATE":       Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_ENUMERATE},
-	"DESKTOP_HOOKCONTROL":     Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_HOOKCONTROL},
-	"DESKTOP_JOURNALPLAYBACK": Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_JOURNALPLAYBACK},
-	"DESKTOP_JOURNALRECORD":   Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_JOURNALRECORD},
-	"DESKTOP_READOBJECTS":     Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_READOBJECTS},
-	"DESKTOP_SWITCHDESKTOP":   Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_SWITCHDESKTOP},
-	"DESKTOP_WRITEOBJECTS":    Enum{Domain: DOMAIN_DESKTOP, Value: windows.DESKTOP_WRITEOBJECTS},
+	"DESKTOP_CREATEMENU":      Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_CREATEMENU},
+	"DESKTOP_CREATEWINDOW":    Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_CREATEWINDOW},
+	"DESKTOP_ENUMERATE":       Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_ENUMERATE},
+	"DESKTOP_HOOKCONTROL":     Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_HOOKCONTROL},
+	"DESKTOP_JOURNALPLAYBACK": Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_JOURNALPLAYBACK},
+	"DESKTOP_JOURNALRECORD":   Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_JOURNALRECORD},
+	"DESKTOP_READOBJECTS":     Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_READOBJECTS},
+	"DESKTOP_SWITCHDESKTOP":   Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_SWITCHDESKTOP},
+	"DESKTOP_WRITEOBJECTS":    Enum{Domain: DOMAIN_DESKTOP, Value: DESKTOP_WRITEOBJECTS},
 
 	//TODO: Partition
 	//TODO: DebugObject
