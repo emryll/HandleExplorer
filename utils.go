@@ -157,11 +157,19 @@ func GetObjectAccessPids(objType uint32, name string) []uint32 {
 }
 
 // Get all object types that a process has accessed
+// This will read lock the object access registry.
 func GetObjectTypesAccessed(pid uint32) map[uint32]bool {
-	var accessed map[uint32]bool
+	g_ObjectAccessRegistry.mu.RLock()
+	defer g_ObjectAccessRegistry.mu.RUnlock()
 
-	//TODO: iterate processlookup
+	if len(g_ObjectAccessRegistry.ProcessLookup[pid]) == 0 {
+		return nil
+	}
 
+	accessed := make(map[uint32]bool)
+	for key := range g_ObjectAccessRegistry.ProcessLookup[pid] {
+		accessed[key.ObjType] = true
+	}
 	return accessed
 }
 
