@@ -113,6 +113,39 @@ func CliPsCommand(tokens []string) {
 	}
 }
 
+// Main routine for parsing and executing the
+// "find" command (find object access with filters)
+func CliFindCommand(flags []string) {
+	var filter SearchFilter
+	if len(flags) == 0 {
+		filter = ObjFilterSelectionMenu()
+	} else {
+		filter = parseFindFlags(flags)
+	}
+
+	if filter.Empty() {
+		fmt.Println("You must enter atleast one search filter.")
+		return
+	}
+	entries := filter.Search()
+	if selected := RenderList(entries); selected != nil {
+		selected.Print()
+	}
+}
+
+// Main routine for parsing and executing the
+// "clusters" command (find overlapping object access)
+func CliClustersCommand(flags []string) {
+	filter := parseClustersFlags(flags)
+	clusters := g_ObjectAccessRegistry.FindOverlapping(filter)
+
+	if selected := RenderList(clusters); selected != nil {
+		selected.Print()
+	}
+}
+
+// *===============================[ Help messages ]===================================
+
 func CliHelpCommand(tokens []string) {
 	if len(tokens) > 0 && tokens[0] == "help" {
 		tokens = tokens[1:]
