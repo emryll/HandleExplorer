@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include "handles.h"
 
+//?==========================================================================+
+//?   This file has the core of handle table enumeration using the NT API.   |
+//?   This part is written in C instead of Go, because these APIs and the    |
+//?     required NT structures are much more of a pain to write in Go...     |
+//?==========================================================================+
+
+// this is actually defined in winternl.h,
+// but im too lazy to refactor now...
 static NQO NtQueryObject = NULL;
 
 // Get the global handle table via NtQuerySystemInformation. It also gets object information,
@@ -31,6 +39,7 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         return NULL;
     }
 
+    //* main handle table enumeration loop
     for (int i = 0; i < handleTableInformation->NumberOfHandles; i++) {
         SYSTEM_HANDLE_TABLE_ENTRY_INFO handleInfo = handleTableInformation->Handles[i];
 
@@ -88,7 +97,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             BYTE* pathParam = NULL;
             BOOL ok = QueryFullProcessImageNameA(hObject, 0, path, &pathLen);
             if (!ok) {
-                printf("[dbg] failed to get process %d path (%d)\n", pid, GetLastError());
+                //printf("[dbg] failed to get process %d path (%d)\n", pid, GetLastError());
                 pathParamSize = 0;
             } else {
                 pathParam = BuildParameter(&pathParamSize, PARAMETER_ANSISTRING, "ImagePath", path);
@@ -127,7 +136,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             char path[1026];
             DWORD retLen = GetFinalPathNameByHandleA(hObject, path, 1026, 0);
             if (retLen == 0) {
-                printf("[ERROR] Failed to get path of file, error code: %d\n", GetLastError());
+                //printf("[ERROR] Failed to get path of file, error code: %d\n", GetLastError());
                 return parameters;
             }
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", path);
@@ -144,7 +153,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             break;
         }
         case OBJ_TYPE_EVENT:
-        case OBJ_TYPE_MUTEX:
+        case OBJ_TYPE_MUTANT:
         case OBJ_TYPE_SEMAPHORE:
             char* name = GetObjectName(hObject);
             if (name == NULL) break;
@@ -231,7 +240,7 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Event") == 0) {
         type = OBJ_TYPE_EVENT;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Mutant") == 0) {
-        type = OBJ_TYPE_MUTEX;
+        type = OBJ_TYPE_MUTANT;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Semaphore") == 0) {
         type = OBJ_TYPE_SEMAPHORE;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Section") == 0) {
@@ -255,7 +264,7 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Partition") == 0) {
         type = OBJ_TYPE_PARTITION;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"DebugObject") == 0) {
-        type = OBJ_TYPE_DBG_OBJECT;
+        type = OBJ_TYPE_DEBUG_OBJECT;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Callback") == 0) {
         type = OBJ_TYPE_CALLBACK;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Adapter") == 0) {
@@ -279,7 +288,7 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Timer") == 0) {
         type = OBJ_TYPE_TIMER;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"IRTimer") == 0) {
-        type = OBJ_TYPE_IR_TIMER;
+        type = OBJ_TYPE_IRTIMER;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Profile") == 0) {
         type = OBJ_TYPE_PROFILE;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"KeyedEvent") == 0) {
@@ -295,7 +304,7 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"ActivationObject") == 0) {
         type = OBJ_TYPE_ACTIVATION_OBJECT;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"TpWorkerFactory") == 0) {
-        type = OBJ_TYPE_WORKER_FACTORY;
+        type = OBJ_TYPE_TP_WORKER_FACTORY;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"IoCompletion") == 0) {
         type = OBJ_TYPE_IO_COMPLETION;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"WaitCompletionPacket") == 0) {
@@ -360,6 +369,8 @@ DWORD GetHandleObjectType(HANDLE hObject) {
         type = OBJ_TYPE_DXGK_SHARED_BUNDLE;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkCompositionObject") == 0) {
         type = OBJ_TYPE_DXGK_COMPOSITION;
+    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkCurrentDxgThreadObject") == 0) {
+        type = OBJ_TYPE_DXGK_CURRENT_DXG_THREAD;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"VRegConfigurationContext") == 0) {
         type = OBJ_TYPE_V_REG_CONFIG_CONTEXT;
     }

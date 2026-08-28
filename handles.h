@@ -1,0 +1,160 @@
+#ifndef HANDLES_H
+#define HANDLES_H
+
+#include <windows.h>
+#include <ntdef.h>
+
+#define HANDLE_INFO_MEM_BLOCK 0x10000 // 64kb
+#define SystemHandleInformation 0x10
+#define ObjectBasicInformation 0
+#define ObjectNameInformation 1
+#define ObjectTypeInformation 2
+
+typedef struct {
+    time_t FirstSeen;  //8
+    time_t LastSeen;   //16
+    BYTE* Params;      //24
+    size_t paramsSize; //32
+    DWORD Handle;      //36 
+    DWORD Access;      //40
+    DWORD Type;        //44
+    DWORD Pid;         //48
+} HANDLE_ENTRY;
+
+
+typedef enum {
+	PARAMETER_ANSISTRING    = 1,
+	PARAMETER_ASTR_ARRAY    = 10,
+	PARAMETER_UINT32        = 2,
+	PARAMETER_UINT32_ARRAY  = 20,
+	PARAMETER_UINT64        = 3,
+	PARAMETER_UINT64_ARRAY  = 30,
+	PARAMETER_BOOLEAN       = 4,
+	PARAMETER_BOOLEAN_ARRAY = 40,
+	PARAMETER_POINTER       = 5,
+	PARAMETER_POINTER_ARRAY = 50,
+	PARAMETER_BYTES         = 7
+} PARAMETER_TYPE;
+
+// handles.c
+HANDLE_ENTRY* GetGlobalHandleTable(size_t*);
+DWORD GetHandleObjectType(HANDLE);
+BYTE* GetHandleParameters(HANDLE, DWORD, size_t*);
+char* GetObjectName(HANDLE);
+
+// utils.c
+BYTE* BuildParameter(size_t*, DWORD, const char*, ...);
+BYTE* CreateParameterHeader(char*, DWORD, DWORD, size_t*);
+char* UnicodeToAnsi(UNICODE_STRING);
+
+// function prototype for cast to call it
+typedef NTSTATUS (NTAPI *NQSI)(ULONG, PVOID, ULONG, PULONG);
+typedef NTSTATUS (NTAPI *NQO)(HANDLE, DWORD, PVOID, ULONG, PULONG);
+typedef NTSTATUS (NTAPI *NQSLO)(HANDLE, PUNICODE_STRING, PULONG);
+
+static NQO NtQueryObject;
+static NQSI NtQuerySystemInformation;
+static NQSLO NtQuerySymbolicLinkObject;
+
+//? NtQueryObject is actually defined in winternl.h but im too lazy to refactor...
+
+typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO {
+    USHORT UniqueProcessId;
+    USHORT CreatorBackTraceIndex;
+    UCHAR ObjectTypeIndex;
+    UCHAR HandleAttributes;
+    USHORT HandleValue;
+    PVOID Object;
+    ULONG GrantedAccess;
+} SYSTEM_HANDLE_TABLE_ENTRY_INFO, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION {
+    ULONG NumberOfHandles;
+    SYSTEM_HANDLE_TABLE_ENTRY_INFO Handles[1];
+} SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+   
+typedef struct __PUBLIC_OBJECT_TYPE_INFORMATION {
+  UNICODE_STRING TypeName;
+  ULONG          Reserved[22];
+} PUBLIC_OBJECT_TYPE_INFORMATION, *PPUBLIC_OBJECT_TYPE_INFORMATION;
+
+typedef struct _OBJECT_NAME_INFORMATION {
+    UNICODE_STRING Name;
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
+
+typedef enum {
+	OBJ_TYPE_UNKNOWN                 = 0,
+	OBJ_TYPE_PROCESS                 = 1,
+	OBJ_TYPE_THREAD                  = 2,
+	OBJ_TYPE_EVENT                   = 3,
+	OBJ_TYPE_SEMAPHORE               = 4,
+	OBJ_TYPE_MUTANT                  = 5,
+	OBJ_TYPE_SECTION                 = 6,
+	OBJ_TYPE_SESSION                 = 7,
+	OBJ_TYPE_FILE                    = 8,
+	OBJ_TYPE_KEY                     = 9,
+	OBJ_TYPE_DIRECTORY               = 10,
+	OBJ_TYPE_SYMLINK                 = 11,
+	OBJ_TYPE_TOKEN                   = 12,
+	OBJ_TYPE_JOB                     = 13,
+	OBJ_TYPE_DESKTOP                 = 14,
+	OBJ_TYPE_PIPE                    = 15,
+	OBJ_TYPE_DEBUG_OBJECT            = 16,
+	OBJ_TYPE_CALLBACK                = 17,
+	OBJ_TYPE_ADAPTER                 = 18,
+	OBJ_TYPE_CONTROLLER              = 19,
+	OBJ_TYPE_DEVICE                  = 20,
+	OBJ_TYPE_DRIVER                  = 21,
+	OBJ_TYPE_IO_RING                 = 22,
+	OBJ_TYPE_TM_TM                   = 23,
+	OBJ_TYPE_TM_TX                   = 24,
+	OBJ_TYPE_TM_RM                   = 25,
+	OBJ_TYPE_TM_EN                   = 26,
+	OBJ_TYPE_TIMER                   = 27,
+	OBJ_TYPE_IRTIMER                 = 28,
+	OBJ_TYPE_PROFILE                 = 29,
+	OBJ_TYPE_KEYED_EVENT             = 30,
+	OBJ_TYPE_WINDOW_STATION          = 31,
+	OBJ_TYPE_COMPOSITION             = 32,
+	OBJ_TYPE_RAW_INPUT_MANAGER       = 33,
+	OBJ_TYPE_CORE_MESSAGING          = 34,
+	OBJ_TYPE_ACTIVATION_OBJECT       = 35,
+	OBJ_TYPE_TP_WORKER_FACTORY       = 36,
+	OBJ_TYPE_IO_COMPLETION           = 37,
+	OBJ_TYPE_WAIT_COMPLETION_PACKET  = 38,
+	OBJ_TYPE_USER_APC_RESERVE        = 39,
+	OBJ_TYPE_IO_COMP_RESERVE         = 40,
+	OBJ_TYPE_ACTIVITY_REFERENCE      = 41,
+	OBJ_TYPE_PS_STATE_CHANGE         = 42,
+	OBJ_TYPE_THREAD_STATE_CHANGE     = 43,
+	OBJ_TYPE_CPU_PARTITION           = 44,
+	OBJ_TYPE_PS_SILO_CTX_PAGED       = 45,
+	OBJ_TYPE_PS_SILO_CTX_NON_PAGED   = 46,
+	OBJ_TYPE_REGISTRY_TRANSACTION    = 47,
+	OBJ_TYPE_DMA_ADAPTER             = 48,
+	OBJ_TYPE_ALPC_PORT               = 49,
+	OBJ_TYPE_ENERGY_TRACKER          = 50,
+	OBJ_TYPE_POWER_REQUEST           = 51,
+	OBJ_TYPE_WMI_GUID                = 52,
+	OBJ_TYPE_ETW_REGISTRATION        = 53,
+	OBJ_TYPE_ETW_SESSION_DEMUX_ENTRY = 54,
+	OBJ_TYPE_ETW_CONSUMER            = 55,
+	OBJ_TYPE_PCW_OBJECT              = 56,
+	OBJ_TYPE_COVERAGE_SAMPLER        = 57,
+	OBJ_TYPE_FILTER_CONNECTION_PORT  = 58,
+	OBJ_TYPE_FILTER_COMM_PORT        = 59,
+	OBJ_TYPE_NDIS_CM_STATE           = 60,
+	OBJ_TYPE_DXGK_SHARED_RSRC        = 61,
+	OBJ_TYPE_DXGK_SHARED_MUTEX       = 62,
+	OBJ_TYPE_DXGK_SHARED_SYNC        = 63,
+	OBJ_TYPE_DXGK_SHARED_SWAP        = 64,
+	OBJ_TYPE_DXGK_DISPLAY_MGR        = 65,
+	OBJ_TYPE_DXGK_SHARED_BUNDLE      = 66,
+	OBJ_TYPE_DXGK_SHARED_SESSION     = 67,
+	OBJ_TYPE_DXGK_COMPOSITION        = 68,
+	OBJ_TYPE_V_REG_CONFIG_CONTEXT    = 69,
+	OBJ_TYPE_PARTITION               = 70,
+	OBJ_TYPE_DXGK_CURRENT_DXG_THREAD = 71,
+} OBJECT_TYPE;
+
+#endif
