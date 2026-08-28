@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,6 +144,179 @@ func CliClustersCommand(flags []string) {
 	if selected := RenderList(clusters); selected != nil {
 		selected.Print()
 	}
+}
+
+//*=================================[ Search filters ]===================================
+
+// Search wrapper for CLI find commands.
+func (f SearchFilter) Search() []*AccessEntry {
+	if !HandleTable.Valid() {
+		HandleTable.Init()
+	}
+
+	g_ObjectAccessRegistry.mu.RLock()
+	defer g_ObjectAccessRegistry.mu.RUnlock()
+
+	if len(f.Pids) != 0 {
+		return g_ObjectAccessRegistry.FindByProcess(f.Pids, f.ObjType, f.Names, f.Access)
+	} else if len(f.ObjType) != 0 {
+		return g_ObjectAccessRegistry.FindByObject(f.ObjType, f.Access, f.Names...)
+	} else {
+		return nil
+	}
+}
+
+func (f SearchFilter) Empty() bool {
+	if len(f.ObjType) == 0 && len(f.Pids) == 0 && len(f.Names) == 0 {
+		return true
+	}
+	return false
+}
+
+func (f ProcessFilter) Search() []*Process {
+	g_ProcessTable.mu.RLock()
+	defer g_ProcessTable.mu.RLock()
+	var results []*Process
+
+	//* quick lookup, used internally when only path is provided
+	if len(f.Pids) > 0 {
+		for _, pid := range f.Pids {
+			if ps, exists := g_ProcessTable.Table[pid]; exists && f.Passes(ps) {
+				results = append(results, ps)
+			}
+		}
+		return results
+	}
+	//* regular lookup
+	for _, ps := range g_ProcessTable.Table {
+		if f.Passes(ps) {
+			results = append(results, ps)
+		}
+	}
+	return results
+}
+
+func (f ProcessFilter) Passes(ps *Process) bool {
+	//* Path / Name
+	if f.Path != "" && ps.Path != f.Path &&
+		f.Path != filepath.Base(ps.Path) &&
+		filepath.Base(f.Path) != ps.Path {
+		return false
+	}
+	// does not qualify if it has no dir listed
+	// while the directory filter has been set
+	if f.Path == filepath.Base(f.Path) && len(f.DirFilter) > 0 {
+		return false
+	}
+
+	//* Directory
+	var dirFound bool
+	for _, dir := range f.DirFilter {
+		f.Path = NormalizePath(f.Path)
+		if strings.HasPrefix(f.Path, dir) { // allow subdirs
+			dirFound = true
+			break
+		}
+	}
+	if len(f.DirFilter) > 0 && !dirFound {
+		return false
+	}
+
+	//* Parent
+	var parentFound bool
+	for _, parent := range f.Parent {
+		//TODO: normalize path / pid
+	}
+	if len(f.Parent) > 0 && !parentFound {
+		return false
+	}
+
+	//* Process elevation
+	if f.Elevated && !ps.Elevated {
+		return false
+	}
+	//* Signature status
+	if f.SigStatus != 0 && f.SigStatus != ps.SigStatus {
+		return false
+	}
+
+	//* Accessed objects
+	accessed := GetObjectTypesAccessed(ps.ProcessId)
+	for objType := range f.ObjTypes {
+		if _, exists := accessed[GetTypeIdentifier(objType)]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
+//*===============================[ Flag parsing ]=====================================
+
+// Parse command-line flags for the "find" command.
+func parseFindFlags(flags []string) SearchFilter {
+	var filter SearchFilter
+	fs := flag.NewFlagSet("find", flag.ExitOnError)
+
+	var (
+		rawTargets string
+		rawObjType string
+		rawAccess  string
+		rawNames   string
+	)
+
+	fs.StringVar(&rawTargets, "p", "", "process filter")
+	fs.StringVar(&rawObjType, "o", "", "object type filter")
+	fs.StringVar(&rawNames, "n", "", "object name filter")
+	fs.StringVar(&rawAccess, "a", "", "handle access filter")
+	fs.Parse(flags)
+
+	filter.Pids = parsePsTargetString(rawTargets)
+	filter.Access = parseAccessString(rawAccess)
+
+	for _, objType := range strings.Split(rawObjType, ",") {
+		objType = strings.TrimSpace(objType)
+		if enum := GetTypeIdentifier(objType); enum != OBJ_TYPE_UNKNOWN {
+			filter.ObjType = append(filter.ObjType, enum)
+		}
+	}
+
+	for _, name := range strings.Split(rawNames, ",") {
+		name = strings.TrimSpace(name)
+		filter.Names = append(filter.Names, name)
+	}
+
+	return filter
+}
+
+func parsePsTargetString(targets string) []uint32 {
+	var pids []uint32
+	tokens := strings.Split(targets, ",")
+
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if pid, err := strconv.Atoi(token); err == nil {
+			pids = append(pids, uint32(pid))
+		} else {
+			pids = append(pids, findProcesses(token)...)
+		}
+	}
+	return pids
+}
+
+func parseClustersFlags(flags []string) ClusterFilter {
+	var (
+		filter      ClusterFilter
+		objTypeName string
+	)
+	cf := flag.NewFlagSet("clusters", flag.ExitOnError)
+
+	cf.IntVar(&filter.MinSize, "m", 0, "minimum cluster size")
+	cf.StringVar(&filter.ObjName, "n", "", "object name")
+	cf.StringVar(&objTypeName, "o", "", "object type")
+
+	cf.Parse(flags)
+	filter.ObjType = GetTypeIdentifier(objTypeName)
+	return filter
 }
 
 // *===============================[ Help messages ]===================================
