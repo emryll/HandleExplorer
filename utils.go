@@ -120,6 +120,54 @@ func parseAccessString(accessList string) Bitmask {
 	return mask
 }
 
+// interpret raw c ansi string as a go string
+func GetAnsiValue(data []byte) string {
+	n := 0
+	for ; n < len(data); n++ {
+		if data[n] == 0 {
+			break // null terminator
+		}
+	}
+	return string(data[:n])
+}
+
+// Get all pids that accessed a named object.
+func GetObjectAccessPids(objType uint32, name string) []uint32 {
+	g_ObjectAccessRegistry.mu.Lock()
+	defer g_ObjectAccessRegistry.mu.Unlock()
+
+	if len(g_ObjectAccessRegistry.ObjectLookup[objType]) == 0 {
+		return nil
+	}
+	var (
+		pids []uint32
+		seen = make(map[uint32]bool)
+	)
+	for key := range g_ObjectAccessRegistry.ObjectLookup[objType] {
+		if key.Name != name {
+			continue
+		}
+		if seen[key.Pid] {
+			continue
+		}
+		pids = append(pids, key.Pid)
+		seen[key.Pid] = true
+	}
+	return pids
+}
+
+// Get all object types that a process has accessed
+func GetObjectTypesAccessed(pid uint32) map[uint32]bool {
+	var accessed map[uint32]bool
+
+	//TODO: iterate processlookup
+
+	return accessed
+}
+
+// Get the domain id for an object type.
+// This is used to translate access mask
+// values into human readable string enums.
 func GetDomainFromObject(objType uint32) uint8 {
 	var domain uint8
 	switch objType {
