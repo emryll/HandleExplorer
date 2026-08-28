@@ -3,6 +3,16 @@
 #include <stdio.h>
 #include "handles.h"
 
+//?======================================================================+
+//?   This file contains utility functions for C, mainly parameters..    |
+//?   I'm using my own format for dynamically typed and sized params.    |
+//?======================================================================+
+
+//* This is the outer function for creating a scalar parameter buffer.
+//? BYTE* param = BuildParameter(&paramSize, PARAMETER_ANSISTRING, "MyName", str)
+// Note: this function takes in 4 parameters, the last one being the value,
+//  variadic args were used as a workaround for a generic value receiver.
+//  void pointer could be used but this way is nicer for the caller...
 BYTE* BuildParameter(size_t* totalSize, DWORD type, const char* name, ...) {
     va_list args;
     va_start(args, name);
