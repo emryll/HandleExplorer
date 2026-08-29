@@ -143,6 +143,25 @@ func CliClustersCommand(flags []string) {
 	}
 }
 
+func CliOverviewCommand() {
+	fmt.Printf("handle count: %d\n", GetTotalHandleCount())
+	PrintGlobalObjTypeDistribution()
+
+	fmt.Printf("process count: %d\n", GetTotalProcessCount())
+	rankedProcesses := RankProcessHandleCount()
+	for i := 0; i < 5; i++ {
+		if i >= len(rankedProcesses) {
+			break
+		}
+		name := filepath.Base(rankedProcesses[i].Path)
+		fmt.Printf("\t- PID %d (%s)\n",
+			rankedProcesses[i].ProcessId, orDash(name))
+	}
+
+	//TODO most wide-reaching
+	//TODO cluster count and avg/median size
+}
+
 //*=================================[ Search filters ]===================================
 
 // Search wrapper for CLI find commands.
@@ -222,7 +241,18 @@ func (f ProcessFilter) Passes(ps *Process) bool {
 	//* Parent
 	var parentFound bool
 	for _, parent := range f.Parent {
-		//TODO: normalize path / pid
+		if parent == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(parent)
+		if err == nil && uint32(pid) == ps.ParentPid {
+			parentFound = true
+			break
+		}
+		if ps.ParentPath == parent || filepath.Base(ps.ParentPath) == parent {
+			parentFound = true
+			break
+		}
 	}
 	if len(f.Parent) > 0 && !parentFound {
 		return false
