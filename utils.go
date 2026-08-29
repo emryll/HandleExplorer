@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -230,4 +231,44 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// Expand all environment variables %env%/file
+// and normalize the usage of slashes.
+func NormalizePath(path string) string {
+	clean := filepath.Clean(path)
+
+	// if none are seen, there are no env vars
+	if !strings.HasPrefix(clean, "%") {
+		return clean
+	}
+
+	var (
+		inside bool
+		start  int
+		b      strings.Builder
+	)
+
+	for i, c := range clean {
+		if c == '%' {
+			if inside {
+				env, ok := os.LookupEnv(clean[start+1 : i])
+				if ok {
+					b.WriteString(env)
+				} else {
+					PrintError("Unknown environment variable: %s\n", clean[start+1:i])
+				}
+			} else {
+				start = i
+			}
+			inside = !inside
+		} else if !inside {
+			b.WriteRune(c)
+		}
+	}
+
+	if inside {
+		PrintError("Invalid use of environment variables, broken path: %v\n", path)
+	}
+	return b.String()
 }
