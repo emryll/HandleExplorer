@@ -136,6 +136,19 @@ func (h *HandleEntry) Print(w io.Writer) {
 	fmt.Fprintf(w, "\tAccess level: %v\n", h.GetAccessAsString())
 }
 
+func (c *Cluster) Print() {
+	fmt.Printf("cluster size: %d\n", len(c.Members))
+	fmt.Printf("cluster members:\n\t")
+	for i, pid := range c.Members {
+		fmt.Printf("%d", pid)
+		if i+1 < len(c.Members) {
+			fmt.Print(", ")
+		}
+	}
+	fmt.Println()
+	PrintObject(c.ObjType, c.ObjName)
+}
+
 //*========================[ Distribution Charts ]=================================
 
 func PrintHandleDistribution(handlesByType map[string]int) {
