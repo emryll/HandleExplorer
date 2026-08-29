@@ -116,7 +116,8 @@ func PrintObject(objType uint32, name string) {
 }
 
 func (e *AccessEntry) Print(w io.Writer) {
-	fmt.Fprintf(w, "* Access by process %d (%s)\n", e.Pid, filepath.Base(LookupProcessPath(e.Pid)))
+	fmt.Fprintf(w, "* Access by process %d (%s)\n",
+		e.Pid, orDash(filepath.Base(LookupProcessPath(e.Pid))))
 	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(e.Object))
 	if e.Name != "" {
 		fmt.Fprintf(w, "\tObject name: %s\n", e.Name)
@@ -124,9 +125,16 @@ func (e *AccessEntry) Print(w io.Writer) {
 	fmt.Fprintf(w, "\tAccess level: %v\n", e.GetAccessAsString())
 }
 
-//TODO: handle.Print()
-
-//TODO: cluster.Print()
+func (h *HandleEntry) Print(w io.Writer) {
+	fmt.Fprintf(w, "* Access by process %d (%s)\n",
+		h.Pid, orDash(filepath.Base(LookupProcessPath(h.Pid))))
+	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(h.Type))
+	nameParam := h.GetParameter("Name")
+	if !nameParam.Empty() {
+		fmt.Fprintf(w, "\tObject name: %s\n", nameParam.GetValue())
+	}
+	fmt.Fprintf(w, "\tAccess level: %v\n", h.GetAccessAsString())
+}
 
 //*========================[ Distribution Charts ]=================================
 
@@ -240,6 +248,10 @@ func PrintAccessDistribution(objType uint32, name string) {
 			GetHorizontalBar(count, maxValue, maxWidth))
 	}
 	fmt.Println(divider)
+}
+
+func PrintGlobalObjTypeDistribution() {
+	//TODO
 }
 
 // Print a horizontal bar for a chart. The axis scale is 0->maxValue.
