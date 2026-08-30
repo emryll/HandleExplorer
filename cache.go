@@ -20,25 +20,89 @@ var HandleTable HandleCache
 // directly access cache, never for methods.
 type HandleCache struct {
 	mu        sync.RWMutex
+    // pid -> objType (NT name) -> handle raw value
 	Cache     map[uint32]map[string]map[uint32]*HandleEntry // pid -> object type -> handle
 	TimeStamp int64                                         // last updated
+
+    refreshMu sync.RWMutex // for state check/set
+    // nil indicates ready-state
+    // non-nil means a refresh is in progress.
+    refreshing chan struct{}
+}
+
+//? The handle cache has waiting functionality
+//? because the cache refresh is expensive, so
+//? it is done in the background, but object
+//? access data should not be used until it is ready.
+
+//? Call HandleTable.WaitReady() before using the OAR,
+//? in order to guarantee the data has not gone stale.
+
+// Set handle cache state as being refreshed.
+// Call CacheReady when the refresh has finished.
+// This WILL write lock the handle cache mutex.
+func (c *HandleCache) SetRefresh() {
+    c.refreshMu.Lock()
+    defer c.refreshMu.Unlock()
+
+    if c.refreshing == nil {
+        c.refreshing = make(chan struct{})
+    }
+}
+
+// Set the handle cache state as ready.
+// This WILL write lock the handle cache mutex.
+func (c *HandleCache) SetReady() {
+    c.refreshMu.Lock()
+    defer c.refreshMu.Unlock()
+
+    if c.refreshing != nil {
+        close(c.refreshing)
+    }
+}
+
+// Wait until the handle cache has finished refresh.
+// If there is no refresh, it will immediately return.
+// This WILL read-lock the handle cache mutex (quick)
+func (c *HandleCache) WaitReady() {
+    c.refreshMu.RLock()
+    refreshing := c.refreshing
+    c.refreshMu.RUnlock()
+
+    if refreshing == nil {
+        return
+    }
+
+    // wait until signalled
+    <-refreshing
 }
 
 // Initialize cache, refilling it. Mutex is handled internally. Concurrency safe method.
 func (c *HandleCache) Init() {
-	start := time.Now()
+    c.SetRefresh()
+
+	start := time.Now() //dbg
 	handleTable := GetGlobalHandleTable()
-	fmt.Println("[dbg] got handle table")
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.Cache == nil {
 		c.Cache = make(map[uint32]map[string]map[uint32]*HandleEntry)
 	}
-	var newEntries []AccessEntry
+
+	var (
+        newEntries []AccessEntry
+        // total active handle counts are
+        // collected here, because it is
+        // hard to collect anywhere else.
+        psCounts = make(map[uint32]int)
+    )
+
 	for _, handle := range handleTable {
+        psCounts[handle.Pid]++
 		if c.Cache[handle.Pid] == nil {
 			c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
 		}
+
 		objectType := GetTypeName(handle.Type)
 		if c.Cache[handle.Pid][objectType] == nil {
 			c.Cache[handle.Pid][objectType] = make(map[uint32]*HandleEntry)
@@ -53,6 +117,9 @@ func (c *HandleCache) Init() {
 			newEntries = append(newEntries, entry)
 		}
 	}
+	c.mu.Unlock()
+
+
 	fmt.Printf("[dbg] found %d new entries\n", len(newEntries))
 	//TODO: THESE LOCKS ARE CAUSING AN INDEFINITE STALL
 	//TODO: FOR SOME REASON ON THE SECOND INIT, NOT FIRST
@@ -64,6 +131,9 @@ func (c *HandleCache) Init() {
 	}
 	fmt.Printf("[dbg] Init took %dms\n", time.Since(start).Milliseconds())
 	c.TimeStamp = time.Now().Unix()
+    c.mu.SetReady()
+
+    g_ProcessTable.UpdatePsHandleCount(psCounts)
 }
 
 // Is handle table cache ready for use. Mutex is handled internally
