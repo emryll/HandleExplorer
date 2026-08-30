@@ -272,3 +272,18 @@ func NormalizePath(path string) string {
 	}
 	return b.String()
 }
+
+// Get total count of handles currently globally.
+// This will read lock the global handle cache.
+func GetTotalHandleCount() int {
+	HandleTable.mu.RLock()
+	defer HandleTable.mu.RUnlock()
+
+	var total int
+	for _, typeMap := range HandleTable.Cache {
+		for _, handleMap := range typeMap {
+			total += len(handleMap)
+		}
+	}
+	return total
+}
