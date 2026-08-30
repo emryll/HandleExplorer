@@ -5,13 +5,28 @@ import (
 	"unsafe"
 )
 
-type Bitmask uint32
+//*=========================[ Processes ]===========================
 
-type Parameter struct {
-	Name   string
-	Type   uint8
-	Domain uint8
-	Buffer []byte
+// This structure is used to cache
+// details about the process.
+// The fields should be set only
+// once when the entry is created!
+// Handle count is the only exception.
+type Process struct {
+	Path       string
+	ProcessId  uint32
+	ParentPid  uint32
+	ParentPath string
+	Elevated   bool
+	SigStatus  int
+    // This stat is cached, because
+    // its hard to retrieve otherwise.
+    HandleCount atomic.Int64 // active handles only
+}
+
+type ProcessTable struct {
+	mu    sync.RWMutex
+	Table map[uint32]*Process
 }
 
 //*==========================[ Handle Entry ]=========================
@@ -77,12 +92,16 @@ type ObjectAccessKey struct {
 	Name string
 }
 
+// A cluster describes overlapping
+// access to a (named) object.
 type Cluster struct {
 	Members []uint32
 	ObjType uint32
 	ObjName string
 	Params  map[string]Parameter
 }
+
+//*======================[ Search filters (CLI) ]===========================
 
 type SearchFilter struct {
 	ObjType []uint32
@@ -107,20 +126,23 @@ type ClusterFilter struct {
 	ObjName string
 }
 
-//*=========================[ Processes ]===========================
+//*========================[ Util types ]===============================
 
-type Process struct {
-	Path       string
-	ProcessId  uint32
-	ParentPid  uint32
-	ParentPath string
-	Elevated   bool
-	SigStatus  int
+var g_SessionStats = &SessionStats{}
+// Cached stats about current state.
+type SessionStats struct {
+	mu                   sync.RWMutex
+	TotalActiveHandles   int
+	TotalActiveProcesses int
 }
 
-type ProcessTable struct {
-	mu    sync.RWMutex
-	Table map[uint32]*Process
+type Bitmask uint32
+
+type Parameter struct {
+	Name   string
+	Type   uint8
+	Domain uint8
+	Buffer []byte
 }
 
 //*=========================[ Windows ]================================
