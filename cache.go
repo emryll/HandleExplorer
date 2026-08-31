@@ -22,7 +22,7 @@ type HandleCache struct {
 	mu        sync.RWMutex
     // pid -> objType (NT name) -> handle raw value
 	Cache     map[uint32]map[string]map[uint32]*HandleEntry // pid -> object type -> handle
-	TimeStamp int64                                         // last updated
+    TimeStamp time.Time                                         // last updated
 
     refreshMu sync.RWMutex // for state check/set
     // nil indicates ready-state
@@ -110,7 +110,7 @@ func (c *HandleCache) Init() {
 
 		if entry, exists := c.Cache[handle.Pid][objectType][handle.Handle]; exists {
 			entry.LastSeen = time.Now().UnixMilli()
-			//TODO: if there is a new access flag then add that to OAC
+            entry.Access |= handle.Access
 		} else {
 			c.Cache[handle.Pid][objectType][handle.Handle] = &handle
 			entry := handle.ConvertToAccessEntry()
@@ -130,8 +130,8 @@ func (c *HandleCache) Init() {
 		g_ObjectAccessRegistry.addEntryRaw(entry)
 	}
 	fmt.Printf("[dbg] Init took %dms\n", time.Since(start).Milliseconds())
-	c.TimeStamp = time.Now().Unix()
-    c.mu.SetReady()
+	c.TimeStamp = time.Now()
+    c.SetReady()
 
     g_ProcessTable.UpdatePsHandleCount(psCounts)
 }
@@ -143,7 +143,7 @@ func (c *HandleCache) Valid() bool {
 	if c.Cache == nil {
 		return false
 	}
-	return c.TimeStamp >= (time.Now().Unix() - int64(HANDLE_CACHE_EXPIRATION))
+	return c.TimeStamp >= (time.Now() - int64(HANDLE_CACHE_EXPIRATION))
 }
 
 // Add new handle entry into cache, or update existing
@@ -252,7 +252,7 @@ func (c *HandleCache) Cleanup(quota ...int) {
 	}
 
 	//* get cache as slice
-	now := time.Now().UnixMilli()
+	now := time.Now()
 	handles := make([]handleWithPriority, 0, 5000)
 	for _, objectCache := range c.Cache {
 		for _, entries := range objectCache {
@@ -294,6 +294,22 @@ func (c *HandleCache) Cleanup(quota ...int) {
 	}
 }
 
-func (c *HandleCache) CacheCleaner(wg *sync.WaitGroup, ctx context.Context) {
-	//TODO:
+// Cleanup the handle cache if it has gone stale.
+// This will read-lock the cache to check state.
+// It will also read-lock for the cleanup.
+func (c *HandleCache) CleanupIfNeeded() {
+    c.mu.RLock()
+
+    if len(c.Cache) == 0 {
+        c.mu.RUnlock()
+        return
+    }
+    elapsed := time.Since(c.TimeStamp).Seconds()
+    if elapsed < float64(HANDLE_CACHE_EXPIRATION) {
+        c.mu.RUnlock()
+        return
+    }
+    c.mu.RUnlock()
+
+    c.Cleanup()
 }
