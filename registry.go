@@ -9,27 +9,39 @@ package main
 // Find all processes whose object access overlaps with that of the given process.
 // Result is a map where key is pid and value is how many times it overlapped.
 // If no processes with overlapping object access are found, the result is nil.
-func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) map[uint32]int {
+// The second return value is all the clusters this process is a part of.
+func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) (map[uint32]int, []Cluster) {
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 
 	if len(reg.ProcessLookup[pid]) == 0 {
-		return nil
+		return nil, nil
 	}
 
+	var clusters []Cluster
 	overlapping := make(map[uint32]int)
 	for key := range reg.ProcessLookup[pid] {
 		if key.Name == "" {
 			continue // cant track anon objects currently :(
 		}
+		cluster := Cluster{
+			ObjName: key.Name,
+			ObjType: key.ObjType,
+		}
 		// add all other processes that accessed the named object
 		for objKey := range reg.ObjectLookup[key.ObjType] {
 			if objKey.Name == key.Name {
-				overlapping[objKey.Pid]++
+				if objKey.Pid != pid {
+					overlapping[objKey.Pid]++
+				}
+				cluster.Members = append(cluster.Members, objKey.Pid)
 			}
 		}
+		if len(cluster.Members) > 1 {
+			clusters = append(clusters, cluster)
+		}
 	}
-	return overlapping
+	return overlapping, clusters
 }
 
 // Find all objects accessed by several different processes.
@@ -41,6 +53,7 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster
 	var (
 		overlapping []Cluster
 		accessed    = make(map[ProcessAccessKey][]uint32)
+		total       int
 	)
 
 	//TODO: also calculate the stats while youre at it
