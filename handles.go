@@ -24,6 +24,7 @@ func GetGlobalHandleTable() []HandleEntry {
 		handleTable = append(handleTable, v.GoEntry())
 	}
 	C.free(unsafe.Pointer(cHandleEntries))
+    g_SessionStats.SetHandleCount(int(handleCount))
 	return handleTable
 }
 
