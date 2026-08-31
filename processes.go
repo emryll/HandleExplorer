@@ -69,7 +69,7 @@ func ScanProcesses() error {
 		processes[entry.ProcessID] = &entry
 		RegisterProcess(&entry)
 	}
-    g_SessionStats.SetProcessCount(len(processes))
+	g_SessionStats.SetProcessCount(len(processes))
 	// This tool doesn't have a driver for callbacks, so...
 	ScanForDeadProcesses(processes)
 	return nil
@@ -221,24 +221,42 @@ func LookupParent(pid uint32) (uint32, string) {
 // Update the active handle counts for each process listed in
 // psCounts, where the key is the pid and value is the handle count.
 func (pt *ProcessTable) UpdatePsHandleCount(psCounts map[uint32]int) {
-    if len(psCounts) == 0 {
-        return
-    }
-    pt.mu.Lock()
-    defer pt.mu.Unlock()
+	if len(psCounts) == 0 {
+		return
+	}
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
 
-    for pid, count := range psCounts {
-        if ps, exists := pt.Table[pid]; exists {
-            ps.HandleCount = count
-        }
-    }
+	for pid, count := range psCounts {
+		if ps, exists := pt.Table[pid]; exists {
+			ps.HandleCount = count
+		}
+	}
 }
 
 func (p *Process) GetHandleCount() int {
-    return p.HandleCount
+	return p.HandleCount
 }
 
 //*=============================[ Utilities ]================================
+
+// Get the total count of active processes.
+// This will read lock the process table.
+func GetTotalProcessCount() int {
+    g_ProcessTable.mu.RLock()
+    defer g_ProcessTable.mu.RUnlock()
+    return len(g_ProcessTable.Table)
+}
+
+// Get the total handle count of a process.
+// This will read lock the process table.
+func GetHandleCountPs(pid uint32) int {
+	ps := g_ProcessTable.LookupProcess(pid)
+	if ps == nil {
+		return 0
+	}
+	return ps.GetHandleCount()
+}
 
 // Get the path of a processes source exe file.
 func LookupProcessPath(pid uint32) string {
