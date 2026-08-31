@@ -136,6 +136,13 @@ type SessionStats struct {
 	TotalActiveProcesses int
 }
 
+type ClusterStats struct {
+    AvgSize float32
+    MedianSize float32
+    DirFrequency map[string]int
+    ExeFrequency map[string]int
+}
+
 type Bitmask uint32
 
 type Parameter struct {

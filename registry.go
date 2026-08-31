@@ -46,18 +46,19 @@ func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) (map[uint32]i
 
 // Find all objects accessed by several different processes.
 // This method will read lock the object access registry.
-func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster {
+func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) ([]Cluster, ClusterStats) {
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 
 	var (
+		total       int // total size of clusters (for avg)
 		overlapping []Cluster
 		accessed    = make(map[ProcessAccessKey][]uint32)
-		total       int
+		stats       = ClusterStats{
+            DirFrequency: make(map[string]int),
+            ExeFrequency: make(map[string]int),
+        }
 	)
-
-	//TODO: also calculate the stats while youre at it
-	//TODO: median, avg, directory distribution, exe distribution
 
 	for pid, objs := range reg.ProcessLookup {
 		for key := range objs {
@@ -67,7 +68,7 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster
 			if key.Name == "" {
 				continue // cant track anon objects currently :(
 			}
-			if filter.Name != "" && key.Name != filter.Name {
+			if filter.ObjName != "" && key.Name != filter.ObjName {
 				continue
 			}
 			accessed[key] = append(accessed[key], pid)
@@ -84,9 +85,27 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) []Cluster
 		}
 		cluster.Members = append(cluster.Members, pids...)
 		overlapping = append(overlapping, cluster)
+		total += len(cluster.Members)
 	}
 
-	return overlapping
+    // avoid out of bounds panic
+    if len(overlapping) == 0 {
+        return overlapping, stats
+    }
+
+    //* finish cluster stat calculations
+    sort.Slice(overlapping, func(i, j int) bool {
+        return len(overlapping[i].Members) > len(overlapping[j].Members)
+    })
+
+    if len(overlapping) % 2 == 0 {
+        
+        stats.MedianSize = 
+    } else {
+
+    }
+	stats.AvgSize = float32(total) / float32(len(overlapping))
+	return overlapping, stats
 }
 
 // Add an interaction to the registry or update existing.
