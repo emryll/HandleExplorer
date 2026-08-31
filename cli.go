@@ -29,6 +29,9 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 	reader := bufio.NewReader(os.Stdin)
 	g := color.New(color.FgHiGreen, color.Bold)
 	for {
+        wg.Add(1)
+        go HandleTable.CleanupIfNeeded()
+
 		g.Printf(" $ ")
 		command := GetInput(reader)
 		if command == "" {
@@ -143,6 +146,7 @@ func CliClustersCommand(flags []string) {
 	}
 }
 
+// Main routine for "overview" command.
 func CliOverviewCommand() {
 	fmt.Printf("handle count: %d\n", GetTotalHandleCount())
 	PrintGlobalObjTypeDistribution()
@@ -153,13 +157,28 @@ func CliOverviewCommand() {
 		if i >= len(rankedProcesses) {
 			break
 		}
-		name := filepath.Base(rankedProcesses[i].Path)
-		fmt.Printf("\t- PID %d (%s)\n",
-			rankedProcesses[i].ProcessId, orDash(name))
+        ps := rankedProcesses[i]
+		name := filepath.Base(ps.Path)
+		fmt.Printf("\t- [%d handles] PID %d (%s)\n",
+			ps.GetHandleCount(), ps.ProcessId, orDash(name))
 	}
 
 	//TODO most wide-reaching
-	//TODO cluster count and avg/median size
+ 
+    clusters, clusterStats := g_ObjectAccessRegistry.FindOverlapping()
+    fmt.Println("objects with overlapping access:")
+    if len(clusters) == 0 {
+        fmt.Printf("\tNone.\n")
+    }
+    // clusters list is already sorted by size
+    for i := 0; i < 5; i++ {
+        if i >= len(clusters) {
+            break
+        }
+        fmt.Printf("\t- [%d] %s : %s", len(clusters[i].Members),
+            GetTypeName(clusters[i].ObjType), clusters[i].ObjName)
+    }
+    clusterStats.Print()
 }
 
 //*=================================[ Search filters ]===================================
