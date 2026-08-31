@@ -20,5 +20,4 @@ func RankProcessHandleCount() []*Process {
 	return processes
 }
 
-//TODO GetClusterStatistics
 //TODO FindMostWideReaching
