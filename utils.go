@@ -273,9 +273,9 @@ func NormalizePath(path string) string {
 	return b.String()
 }
 
-// Get total count of handles currently globally.
+// Get total count of handles currently cached.
 // This will read lock the global handle cache.
-func GetTotalHandleCount() int {
+func GetTotalCachedHandleCount() int {
 	HandleTable.mu.RLock()
 	defer HandleTable.mu.RUnlock()
 
@@ -286,4 +286,23 @@ func GetTotalHandleCount() int {
 		}
 	}
 	return total
+}
+
+// Get the total handle count (global).
+// This will read lock the session stats.
+func GetTotalHandleCount() int {
+	g_SessionStats.mu.RLock()
+	defer g_SessionStats.mu.RUnlock()
+	return g_SessionStats.TotalActiveHandles
+}
+func (s *SessionStats) SetProcessCount(count int) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.TotalActiveProcesses = count
+}
+
+func (s *SessionStats) SetHandleCount(count int) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.TotalActiveHandles = count
 }
