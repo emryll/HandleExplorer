@@ -69,6 +69,7 @@ func ScanProcesses() error {
 		processes[entry.ProcessID] = &entry
 		RegisterProcess(&entry)
 	}
+    g_SessionStats.SetProcessCount(len(processes))
 	// This tool doesn't have a driver for callbacks, so...
 	ScanForDeadProcesses(processes)
 	return nil
@@ -215,6 +216,26 @@ func LookupParent(pid uint32) (uint32, string) {
 		return ppid, ""
 	}
 	return 0, ""
+}
+
+// Update the active handle counts for each process listed in
+// psCounts, where the key is the pid and value is the handle count.
+func (pt *ProcessTable) UpdatePsHandleCount(psCounts map[uint32]int) {
+    if len(psCounts) == 0 {
+        return
+    }
+    pt.mu.Lock()
+    defer pt.mu.Unlock()
+
+    for pid, count := range psCounts {
+        if ps, exists := pt.Table[pid]; exists {
+            ps.HandleCount = count
+        }
+    }
+}
+
+func (p *Process) GetHandleCount() int {
+    return p.HandleCount
 }
 
 //*=============================[ Utilities ]================================
