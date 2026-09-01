@@ -1,5 +1,10 @@
 package main
 
+import (
+	"path/filepath"
+	"sort"
+)
+
 //?==============================================================================+
 //?     This file is responsible for managing and searching object access.       |
 //?    It is done using a secondary structure from the raw handle table cache.   |
@@ -55,9 +60,10 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) ([]Cluste
 		overlapping []Cluster
 		accessed    = make(map[ProcessAccessKey][]uint32)
 		stats       = ClusterStats{
-            DirFrequency: make(map[string]int),
-            ExeFrequency: make(map[string]int),
-        }
+			DirFrequency: make(map[string]int),
+			ExeFrequency: make(map[string]int),
+			ObjFrequency: make(map[uint32]int),
+		}
 	)
 
 	for pid, objs := range reg.ProcessLookup {
@@ -76,34 +82,53 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) ([]Cluste
 	}
 
 	for key, pids := range accessed {
-		cluster := Cluster{
-			ObjType: key.ObjType,
-			ObjName: key.Name,
+		if len(pids) < 2 {
+			continue
 		}
 		if filter.MinSize > 0 && len(pids) < filter.MinSize {
 			continue
 		}
+
+		cluster := Cluster{
+			ObjType: key.ObjType,
+			ObjName: key.Name,
+		}
 		cluster.Members = append(cluster.Members, pids...)
 		overlapping = append(overlapping, cluster)
+
+		// collect data for cluster stats
+		for _, pid := range pids {
+			path := LookupProcessPath(pid)
+			if path != "" {
+				stats.ExeFrequency[path]++
+			}
+			if filepath.Base(path) != path {
+				stats.DirFrequency[filepath.Dir(path)]++
+			}
+		}
+		stats.ObjFrequency[key.ObjType]++
 		total += len(cluster.Members)
 	}
 
-    // avoid out of bounds panic
-    if len(overlapping) == 0 {
-        return overlapping, stats
-    }
+	// avoid out of bounds panic
+	if len(overlapping) == 0 {
+		return overlapping, stats
+	}
 
-    //* finish cluster stat calculations
-    sort.Slice(overlapping, func(i, j int) bool {
-        return len(overlapping[i].Members) > len(overlapping[j].Members)
-    })
+	//* finish cluster stat calculations
+	sort.Slice(overlapping, func(i, j int) bool {
+		return len(overlapping[i].Members) > len(overlapping[j].Members)
+	})
 
-    if len(overlapping) % 2 == 0 {
-        
-        stats.MedianSize = 
-    } else {
-
-    }
+	if len(overlapping)%2 == 0 {
+		upperMidIndex := len(overlapping) / 2
+		totalMiddle := len(overlapping[upperMidIndex-1].Members)
+		totalMiddle += len(overlapping[upperMidIndex].Members)
+		stats.MedianSize = float32(totalMiddle) / 2
+	} else {
+		midIndex := len(overlapping) / 2
+		stats.MedianSize = float32(len(overlapping[midIndex].Members))
+	}
 	stats.AvgSize = float32(total) / float32(len(overlapping))
 	return overlapping, stats
 }
