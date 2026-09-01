@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -19,9 +20,9 @@ type Process struct {
 	ParentPath string
 	Elevated   bool
 	SigStatus  int
-    // This stat is cached, because
-    // its hard to retrieve otherwise.
-    HandleCount atomic.Int64 // active handles only
+	// This stat is cached, because
+	// its hard to retrieve otherwise.
+	HandleCount atomic.Int64 // active handles only
 }
 
 type ProcessTable struct {
@@ -129,6 +130,7 @@ type ClusterFilter struct {
 //*========================[ Util types ]===============================
 
 var g_SessionStats = &SessionStats{}
+
 // Cached stats about current state.
 type SessionStats struct {
 	mu                   sync.RWMutex
@@ -137,10 +139,12 @@ type SessionStats struct {
 }
 
 type ClusterStats struct {
-    AvgSize float32
-    MedianSize float32
-    DirFrequency map[string]int
-    ExeFrequency map[string]int
+	TotalCount   int
+	AvgSize      float32
+	MedianSize   float32
+	DirFrequency map[string]int
+	ExeFrequency map[string]int
+	ObjFrequency map[uint32]int
 }
 
 type Bitmask uint32
