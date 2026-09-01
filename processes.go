@@ -229,13 +229,13 @@ func (pt *ProcessTable) UpdatePsHandleCount(psCounts map[uint32]int) {
 
 	for pid, count := range psCounts {
 		if ps, exists := pt.Table[pid]; exists {
-			ps.HandleCount = count
+			ps.HandleCount.Store(int64(count))
 		}
 	}
 }
 
 func (p *Process) GetHandleCount() int {
-	return p.HandleCount
+	return int(p.HandleCount.Load())
 }
 
 //*=============================[ Utilities ]================================
@@ -243,9 +243,9 @@ func (p *Process) GetHandleCount() int {
 // Get the total count of active processes.
 // This will read lock the process table.
 func GetTotalProcessCount() int {
-    g_ProcessTable.mu.RLock()
-    defer g_ProcessTable.mu.RUnlock()
-    return len(g_ProcessTable.Table)
+	g_ProcessTable.mu.RLock()
+	defer g_ProcessTable.mu.RUnlock()
+	return len(g_ProcessTable.Table)
 }
 
 // Get the total handle count of a process.
@@ -260,6 +260,10 @@ func GetHandleCountPs(pid uint32) int {
 
 // Get the path of a processes source exe file.
 func LookupProcessPath(pid uint32) string {
+	if ps := g_ProcessTable.LookupProcess(pid); ps != nil {
+		return ps.Path
+	}
+
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return ""
