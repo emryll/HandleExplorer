@@ -16,10 +16,9 @@ func main() {
 
 	wg.Add(2)
 	go ProcessScanner(&wg, ctx)
-	go HandleTable.CacheCleaner(&wg, ctx) // TODO: migrate to run on events
-	PrintBanner()
+	go HandleTable.Init()
 
-	HandleTable.Init()
+	PrintBanner()
 	CommandParsingLoop(&wg, cancel)
 
 	wg.Wait()

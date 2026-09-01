@@ -29,8 +29,8 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 	reader := bufio.NewReader(os.Stdin)
 	g := color.New(color.FgHiGreen, color.Bold)
 	for {
-        wg.Add(1)
-        go HandleTable.CleanupIfNeeded()
+		wg.Add(1)
+		go HandleTable.CleanupIfNeeded()
 
 		g.Printf(" $ ")
 		command := GetInput(reader)
@@ -44,6 +44,10 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 			cancel() // shutdown command
 			return
 		}
+
+		wg.Add(1)
+		// start refresh just in-case
+		go HandleTable.Init()
 	}
 }
 
@@ -157,28 +161,28 @@ func CliOverviewCommand() {
 		if i >= len(rankedProcesses) {
 			break
 		}
-        ps := rankedProcesses[i]
+		ps := rankedProcesses[i]
 		name := filepath.Base(ps.Path)
 		fmt.Printf("\t- [%d handles] PID %d (%s)\n",
 			ps.GetHandleCount(), ps.ProcessId, orDash(name))
 	}
 
 	//TODO most wide-reaching
- 
-    clusters, clusterStats := g_ObjectAccessRegistry.FindOverlapping()
-    fmt.Println("objects with overlapping access:")
-    if len(clusters) == 0 {
-        fmt.Printf("\tNone.\n")
-    }
-    // clusters list is already sorted by size
-    for i := 0; i < 5; i++ {
-        if i >= len(clusters) {
-            break
-        }
-        fmt.Printf("\t- [%d] %s : %s", len(clusters[i].Members),
-            GetTypeName(clusters[i].ObjType), clusters[i].ObjName)
-    }
-    clusterStats.Print()
+
+	clusters, clusterStats := g_ObjectAccessRegistry.FindOverlapping()
+	fmt.Println("objects with overlapping access:")
+	if len(clusters) == 0 {
+		fmt.Printf("\tNone.\n")
+	}
+	// clusters list is already sorted by size
+	for i := 0; i < 5; i++ {
+		if i >= len(clusters) {
+			break
+		}
+		fmt.Printf("\t- [%d] %s : %s", len(clusters[i].Members),
+			GetTypeName(clusters[i].ObjType), clusters[i].ObjName)
+	}
+	clusterStats.Print()
 }
 
 //*=================================[ Search filters ]===================================
