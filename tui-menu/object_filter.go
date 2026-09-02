@@ -216,3 +216,21 @@ func (m *objectFilterModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
+
+//*======================[ Rendering fields ]==========================
+
+func (m *objectFilterModel) renderTextSection(label string, ti *textinput.Model, field objectFocusField) string {
+	style := sectionStyle
+
+	if m.focus == field {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(m.types.boxWidth)
+
+	content :=
+		labelStyle.Render(label) + "\n" +
+			renderInput(ti, m.types.gridWidth)
+
+	return style.Render(content) + "\n\n"
+}
