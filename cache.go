@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -19,15 +18,15 @@ var HandleTable HandleCache
 // You should only use the mutex if you
 // directly access cache, never for methods.
 type HandleCache struct {
-	mu        sync.RWMutex
-    // pid -> objType (NT name) -> handle raw value
+	mu sync.RWMutex
+	// pid -> objType (NT name) -> handle raw value
 	Cache     map[uint32]map[string]map[uint32]*HandleEntry // pid -> object type -> handle
-    TimeStamp time.Time                                         // last updated
+	TimeStamp time.Time                                     // last updated
 
-    refreshMu sync.RWMutex // for state check/set
-    // nil indicates ready-state
-    // non-nil means a refresh is in progress.
-    refreshing chan struct{}
+	refreshMu sync.RWMutex // for state check/set
+	// nil indicates ready-state
+	// non-nil means a refresh is in progress.
+	refreshing chan struct{}
 }
 
 //? The handle cache has waiting functionality
@@ -42,44 +41,44 @@ type HandleCache struct {
 // Call CacheReady when the refresh has finished.
 // This WILL write lock the handle cache mutex.
 func (c *HandleCache) SetRefresh() {
-    c.refreshMu.Lock()
-    defer c.refreshMu.Unlock()
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
 
-    if c.refreshing == nil {
-        c.refreshing = make(chan struct{})
-    }
+	if c.refreshing == nil {
+		c.refreshing = make(chan struct{})
+	}
 }
 
 // Set the handle cache state as ready.
 // This WILL write lock the handle cache mutex.
 func (c *HandleCache) SetReady() {
-    c.refreshMu.Lock()
-    defer c.refreshMu.Unlock()
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
 
-    if c.refreshing != nil {
-        close(c.refreshing)
-    }
+	if c.refreshing != nil {
+		close(c.refreshing)
+	}
 }
 
 // Wait until the handle cache has finished refresh.
 // If there is no refresh, it will immediately return.
 // This WILL read-lock the handle cache mutex (quick)
 func (c *HandleCache) WaitReady() {
-    c.refreshMu.RLock()
-    refreshing := c.refreshing
-    c.refreshMu.RUnlock()
+	c.refreshMu.RLock()
+	refreshing := c.refreshing
+	c.refreshMu.RUnlock()
 
-    if refreshing == nil {
-        return
-    }
+	if refreshing == nil {
+		return
+	}
 
-    // wait until signalled
-    <-refreshing
+	// wait until signalled
+	<-refreshing
 }
 
 // Initialize cache, refilling it. Mutex is handled internally. Concurrency safe method.
 func (c *HandleCache) Init() {
-    c.SetRefresh()
+	c.SetRefresh()
 
 	start := time.Now() //dbg
 	handleTable := GetGlobalHandleTable()
@@ -90,15 +89,15 @@ func (c *HandleCache) Init() {
 	}
 
 	var (
-        newEntries []AccessEntry
-        // total active handle counts are
-        // collected here, because it is
-        // hard to collect anywhere else.
-        psCounts = make(map[uint32]int)
-    )
+		newEntries []AccessEntry
+		// total active handle counts are
+		// collected here, because it is
+		// hard to collect anywhere else.
+		psCounts = make(map[uint32]int)
+	)
 
 	for _, handle := range handleTable {
-        psCounts[handle.Pid]++
+		psCounts[handle.Pid]++
 		if c.Cache[handle.Pid] == nil {
 			c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
 		}
@@ -110,7 +109,7 @@ func (c *HandleCache) Init() {
 
 		if entry, exists := c.Cache[handle.Pid][objectType][handle.Handle]; exists {
 			entry.LastSeen = time.Now().UnixMilli()
-            entry.Access |= handle.Access
+			entry.Access |= handle.Access
 		} else {
 			c.Cache[handle.Pid][objectType][handle.Handle] = &handle
 			entry := handle.ConvertToAccessEntry()
@@ -118,7 +117,6 @@ func (c *HandleCache) Init() {
 		}
 	}
 	c.mu.Unlock()
-
 
 	fmt.Printf("[dbg] found %d new entries\n", len(newEntries))
 	//TODO: THESE LOCKS ARE CAUSING AN INDEFINITE STALL
@@ -131,9 +129,9 @@ func (c *HandleCache) Init() {
 	}
 	fmt.Printf("[dbg] Init took %dms\n", time.Since(start).Milliseconds())
 	c.TimeStamp = time.Now()
-    c.SetReady()
+	c.SetReady()
 
-    g_ProcessTable.UpdatePsHandleCount(psCounts)
+	g_ProcessTable.UpdatePsHandleCount(psCounts)
 }
 
 // Is handle table cache ready for use. Mutex is handled internally
@@ -143,7 +141,8 @@ func (c *HandleCache) Valid() bool {
 	if c.Cache == nil {
 		return false
 	}
-	return c.TimeStamp >= (time.Now() - int64(HANDLE_CACHE_EXPIRATION))
+	elapsed := time.Since(c.TimeStamp).Seconds()
+	return int(elapsed) >= HANDLE_CACHE_EXPIRATION
 }
 
 // Add new handle entry into cache, or update existing
@@ -298,18 +297,16 @@ func (c *HandleCache) Cleanup(quota ...int) {
 // This will read-lock the cache to check state.
 // It will also read-lock for the cleanup.
 func (c *HandleCache) CleanupIfNeeded() {
-    c.mu.RLock()
+	if c.NeedsCleanup() {
+		c.Cleanup()
+	}
+}
 
-    if len(c.Cache) == 0 {
-        c.mu.RUnlock()
-        return
-    }
-    elapsed := time.Since(c.TimeStamp).Seconds()
-    if elapsed < float64(HANDLE_CACHE_EXPIRATION) {
-        c.mu.RUnlock()
-        return
-    }
-    c.mu.RUnlock()
-
-    c.Cleanup()
+// Check if the cache needs to be cleaned up.
+// This will read lock the handle cache mutex.
+func (c *HandleCache) NeedsCleanup() bool {
+	if len(c.Cache) > HANDLE_CACHE_MAX_COUNT {
+		return true
+	}
+	return false
 }

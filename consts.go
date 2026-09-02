@@ -36,6 +36,10 @@ var (
 	PS_REFRESH_INTERVAL     = 10
 	HANDLE_REFRESH_INTERVAL = 30
 	HANDLE_CACHE_EXPIRATION = 10
+	// This indicates a desired maximum,
+	// not an actual hard limit on the capacity.
+	// After this count, cache gets cleanup.
+	HANDLE_CACHE_MAX_COUNT = 1000000 // around 50MB
 )
 
 var ( //* Handle Cache Cleanup modifiers
