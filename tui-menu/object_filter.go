@@ -3,6 +3,7 @@ package tmenu
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -24,6 +25,47 @@ func ObjFilterSelectionMenu() *ObjectFilter {
 }
 
 //*==============================[ Model ]==============================
+
+func initialObjectFilterModel() *objectFilterModel {
+	objectName := textinput.New()
+	objectName.Placeholder =
+		`e.g. \Sessions\1\BaseNamedObjects\MyMutex`
+	objectName.CharLimit = 256
+	objectName.Prompt = ""
+	styleTextInput(&objectName)
+
+	process := textinput.New()
+	process.Placeholder =
+		"e.g. explorer.exe or a PID"
+	process.CharLimit = 128
+	process.Prompt = ""
+	styleTextInput(&process)
+
+	accessLevel := textinput.New()
+	accessLevel.Placeholder =
+		"e.g. 0x1F0001 or GENERIC_READ"
+	accessLevel.CharLimit = 64
+	accessLevel.Prompt = ""
+	styleTextInput(&accessLevel)
+
+	m := &objectFilterModel{
+		focus: objectFocusTypes,
+
+		types: newObjectTypePicker(),
+
+		objectName:  objectName,
+		process:     process,
+		accessLevel: accessLevel,
+	}
+
+	m.syncFocus()
+
+	return m
+}
+
+func (m *objectFilterModel) Init() tea.Cmd {
+	return textinput.Blink
+}
 
 func (m *objectFilterModel) View() string {
 	if m.quitting {
