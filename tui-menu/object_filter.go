@@ -97,3 +97,80 @@ func (m *objectFilterModel) View() string {
 		Height(m.height).
 		Render(form)
 }
+
+func (m *objectFilterModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		m.types.recalcLayout(
+			msg.Width,
+			msg.Height,
+			30,
+		)
+
+		m.recalcInputs()
+
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+
+		case "esc":
+			if m.focus == objectFocusTypes && m.types.filter != "" {
+				m.types.filter = ""
+				m.types.cursor = 0
+				return m, nil
+			}
+
+			m.quitting = true
+			return m, tea.Quit
+
+		case "tab":
+			m.focus = (m.focus + 1) % objectFocusCount
+			m.syncFocus()
+			return m, nil
+
+		case "shift+tab":
+			m.focus =
+				(m.focus - 1 + objectFocusCount) % objectFocusCount
+
+			m.syncFocus()
+			return m, nil
+
+		case "enter":
+			m.submitted = true
+			m.result = m.buildFilter()
+			m.quitting = true
+
+			return m, tea.Quit
+		}
+
+		switch m.focus {
+		case objectFocusTypes:
+			m.types.update(msg)
+			return m, nil
+
+		case objectFocusName:
+			var cmd tea.Cmd
+			m.objectName, cmd = m.objectName.Update(msg)
+			return m, cmd
+
+		case objectFocusProcess:
+			var cmd tea.Cmd
+			m.process, cmd = m.process.Update(msg)
+			return m, cmd
+
+		case objectFocusAccess:
+			var cmd tea.Cmd
+			m.accessLevel, cmd = m.accessLevel.Update(msg)
+			return m, cmd
+		}
+	}
+
+	return m, nil
+}
