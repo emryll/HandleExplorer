@@ -1,7 +1,10 @@
 package tmenu
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -68,4 +71,89 @@ func initialProcessFilterModel() *processModel {
 
 func (m *processModel) Init() tea.Cmd {
 	return textinput.Blink
+}
+
+//*========================[ Model View ]=======================
+
+func (m *processModel) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString(
+		titleStyle.Render("HandleExplorer"),
+	)
+
+	b.WriteString("\n")
+
+	b.WriteString(
+		subtitleStyle.Render("Process Search Filters"),
+	)
+
+	b.WriteString("\n\n")
+
+	b.WriteString(
+		m.renderProcessTextSection(
+			"Path",
+			m.path,
+			processFocusPath,
+		),
+	)
+
+	b.WriteString(
+		m.renderListSection(
+			"Directory Filter",
+			m.allowlistInput,
+			len(m.allowlist),
+			processFocusAllowlist,
+		),
+	)
+
+	b.WriteString(
+		m.renderListSection(
+			"Parent Process",
+			m.parentInput,
+			len(m.parent),
+			processFocusParent,
+		),
+	)
+
+	b.WriteString(
+		m.renderPropertiesSection(),
+	)
+
+	b.WriteString(
+		m.renderObjectTypeSection(),
+	)
+
+	help :=
+		"tab switch field - arrows move - space toggle - enter add/search - esc cancel"
+
+	helpWidth := m.typeBoxWidth
+
+	if helpWidth > 4 {
+		help = truncate(
+			help,
+			helpWidth-2,
+		)
+	}
+
+	b.WriteString(
+		helpStyle.Render(help),
+	)
+
+	form := b.String()
+	form = placeForm(
+		m.width,
+		m.height,
+		form,
+	)
+
+	return lipgloss.NewStyle().
+		Background(colorBg).
+		Width(m.width).
+		Height(m.height).
+		Render(form)
 }
