@@ -217,6 +217,58 @@ func (m *objectFilterModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (p *objectTypePicker) update(msg tea.KeyMsg) {
+	visible := p.visibleIndices()
+
+	if len(visible) == 0 {
+		p.cursor = 0
+	} else if p.cursor >= len(visible) {
+		p.cursor = len(visible) - 1
+	}
+
+	switch msg.String() {
+	case "up":
+		if p.cursor-p.cols >= 0 {
+			p.cursor -= p.cols
+		}
+
+	case "down":
+		if p.cursor+p.cols < len(visible) {
+			p.cursor += p.cols
+		}
+
+	case "left":
+		if p.cursor%p.cols != 0 {
+			p.cursor--
+		}
+
+	case "right":
+		if p.cursor%p.cols != p.cols-1 &&
+			p.cursor+1 < len(visible) {
+			p.cursor++
+		}
+
+	case " ":
+		if len(visible) > 0 {
+			realIndex := visible[p.cursor]
+			p.selected[realIndex] = !p.selected[realIndex]
+		}
+
+	case "backspace":
+		if len(p.filter) > 0 {
+			runes := []rune(p.filter)
+			p.filter = string(runes[:len(runes)-1])
+			p.cursor = 0
+		}
+
+	default:
+		if msg.Type == tea.KeyRunes {
+			p.filter += string(msg.Runes)
+			p.cursor = 0
+		}
+	}
+}
+
 //*======================[ Rendering fields ]==========================
 
 func (m *objectFilterModel) renderTextSection(label string, ti *textinput.Model, field objectFocusField) string {
