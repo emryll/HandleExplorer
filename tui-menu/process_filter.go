@@ -157,3 +157,111 @@ func (m *processModel) View() string {
 		Height(m.height).
 		Render(form)
 }
+
+//*=========================[ Model Update ]=========================
+
+func (m *processModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		m.recalcLayout()
+
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+
+		case "esc":
+			if m.focus == processFocusObjectTypes && m.typeFilter != "" {
+				m.typeFilter = ""
+				m.typeCursor = 0
+				return m, nil
+			}
+
+			m.quitting = true
+			return m, tea.Quit
+
+		case "tab":
+			m.focus = (m.focus + 1) % processFocusFieldCount
+			m.syncFocus()
+			return m, nil
+
+		case "shift+tab":
+			m.focus =
+				(m.focus - 1 + processFocusFieldCount) %
+					processFocusFieldCount
+
+			m.syncFocus()
+
+			return m, nil
+
+		case "enter":
+			switch m.focus {
+			case processFocusAllowlist:
+				m.addAllowlistEntry()
+				return m, nil
+
+			case processFocusParent:
+				m.addParentEntry()
+				return m, nil
+
+			default:
+				m.submitted = true
+				m.result = m.buildFilter()
+				m.quitting = true
+
+				return m, tea.Quit
+			}
+		}
+
+		switch m.focus {
+		case processFocusProperties:
+			m.updateProperties(&msg)
+			return m, nil
+
+		case processFocusObjectTypes:
+			m.updateObjectTypes(&msg)
+			return m, nil
+
+		case processFocusPath:
+			var (
+				cmd     tea.Cmd
+				updated textinput.Model
+			)
+
+			updated, cmd = m.path.Update(msg)
+			m.path = &updated
+			return m, cmd
+
+		case processFocusAllowlist:
+			var (
+				cmd     tea.Cmd
+				updated textinput.Model
+			)
+
+			updated, cmd =
+				m.allowlistInput.Update(msg)
+			m.allowlistInput = &updated
+			return m, cmd
+
+		case processFocusParent:
+			var (
+				cmd     tea.Cmd
+				updated textinput.Model
+			)
+
+			updated, cmd =
+				m.parentInput.Update(msg)
+			m.parentInput = &updated
+
+			return m, cmd
+		}
+	}
+
+	return m, nil
+}
