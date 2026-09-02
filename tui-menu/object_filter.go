@@ -1,6 +1,7 @@
 package tmenu
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -267,6 +268,209 @@ func (p *objectTypePicker) update(msg tea.KeyMsg) {
 			p.cursor = 0
 		}
 	}
+}
+
+func (p *objectTypePicker) view(focused bool) string {
+	style := sectionStyle
+
+	if focused {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(p.boxWidth)
+
+	visible := p.visibleIndices()
+	totalRows := 0
+
+	if len(visible) > 0 {
+		totalRows = (len(visible) + p.cols - 1) / p.cols
+	}
+
+	currentRow := 0
+
+	if len(visible) > 0 {
+		currentRow = p.cursor / p.cols
+	}
+
+	visibleRows := p.visibleRows
+	scrollOffset := 0
+
+	if totalRows > visibleRows {
+		scrollOffset = currentRow - visibleRows/2
+
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+	}
+
+	maxOffset := totalRows - visibleRows
+
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+
+	if scrollOffset > maxOffset {
+		scrollOffset = maxOffset
+	}
+
+	if currentRow >= scrollOffset+visibleRows {
+		scrollOffset =
+			currentRow - visibleRows + 1
+	}
+
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	if scrollOffset > maxOffset {
+		scrollOffset = maxOffset
+	}
+
+	startRow := scrollOffset
+	endRow := scrollOffset + visibleRows
+
+	if endRow > totalRows {
+		endRow = totalRows
+	}
+
+	var b strings.Builder
+
+	header :=
+		labelStyle.Render("Object Type") +
+			textStyle.Render("  ") +
+			labelStyle.Render(
+				fmt.Sprintf(
+					"space toggle - %d selected",
+					p.selectedCount(),
+				),
+			)
+
+	b.WriteString(header)
+	b.WriteString("\n")
+
+	if len(visible) > 0 && focused {
+		realIndex := visible[p.cursor]
+
+		b.WriteString(labelStyle.Render(">> "))
+
+		previewWidth := p.gridWidth - 3
+
+		if previewWidth < 1 {
+			previewWidth = 1
+		}
+
+		b.WriteString(
+			textStyle.Render(
+				truncate(
+					p.objectTypes[realIndex],
+					previewWidth,
+				),
+			),
+		)
+	}
+
+	b.WriteString("\n\n")
+
+	if len(visible) == 0 {
+		b.WriteString(
+			lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Italic(true).
+				Render(
+					fmt.Sprintf(
+						"  no types match %q",
+						p.filter,
+					),
+				),
+		)
+		b.WriteString("\n")
+	} else {
+		for row := startRow; row < endRow; row++ {
+			start := row * p.cols
+			end := start + p.cols
+
+			if end > len(visible) {
+				end = len(visible)
+			}
+
+			var cells []string
+
+			for pos := start; pos < end; pos++ {
+				cells = append(
+					cells,
+					p.renderCell(
+						visible[pos],
+						pos,
+					),
+				)
+			}
+
+			b.WriteString(
+				lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					cells...,
+				),
+			)
+
+			b.WriteString("\n")
+		}
+
+		actualRows := endRow - startRow
+
+		for i := actualRows; i < visibleRows; i++ {
+			b.WriteString("\n")
+		}
+	}
+
+	scrollStyle := lipgloss.NewStyle().
+		Foreground(colorAccent).
+		Bold(true)
+
+	remaining := totalRows - endRow
+
+	if scrollOffset > 0 {
+		b.WriteString(
+			scrollStyle.Render(
+				fmt.Sprintf(
+					"  ^ %d more above (up arrow)",
+					scrollOffset*p.cols,
+				),
+			),
+		)
+	}
+	b.WriteString("\n")
+
+	if remaining > 0 {
+		b.WriteString(
+			scrollStyle.Render(
+				fmt.Sprintf(
+					"  v %d more below (down arrow)",
+					remaining*p.cols,
+				),
+			),
+		)
+	}
+	b.WriteString("\n")
+
+	b.WriteString("\n")
+
+	filterLine := labelStyle.Render("Type to filter: ")
+
+	if p.filter != "" {
+		filterLine += titleStyle.Render(p.filter)
+		filterLine += titleStyle.Render("|")
+	} else if focused {
+		filterLine += titleStyle.Render("_")
+	}
+
+	b.WriteString(filterLine)
+
+	return style.Render(
+		strings.TrimRight(
+			b.String(),
+			"\n",
+		),
+	) + "\n\n"
 }
 
 //*======================[ Rendering fields ]==========================
