@@ -2,6 +2,61 @@ package tmenu
 
 import "github.com/charmbracelet/lipgloss"
 
+//*=======================[ Styles ]======================
+
+var (
+	colorAccent = lipgloss.Color("#89B4FA")
+	colorGood   = lipgloss.Color("#A6E3A1")
+	colorText   = lipgloss.Color("#CDD6F4")
+	colorMuted  = lipgloss.Color("#6C7086")
+	colorBg     = lipgloss.Color("#181825")
+)
+
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorAccent).
+			Background(colorBg)
+
+	subtitleStyle = lipgloss.NewStyle().
+			Foreground(colorMuted).
+			Background(colorBg)
+
+	labelStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorMuted).
+			Background(colorBg)
+
+	sectionStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorMuted).
+			BorderBackground(colorBg).
+			Background(colorBg).
+			Padding(0, 2)
+
+	focusedSectionStyle = sectionStyle.
+				BorderForeground(colorAccent)
+
+	textStyle = lipgloss.NewStyle().
+			Foreground(colorText).
+			Background(colorBg)
+
+	cursorGlyphStyle = lipgloss.NewStyle().
+				Foreground(colorAccent).
+				Background(colorBg).
+				Bold(true)
+
+	checkedStyle = lipgloss.NewStyle().
+			Foreground(colorGood).
+			Background(colorBg)
+
+	helpStyle = lipgloss.NewStyle().
+			Foreground(colorMuted).
+			Background(colorBg).
+			MarginBackground(colorBg).
+			MarginTop(1)
+)
+
 //*=========================[ Generic helpers ]=========================
 
 func maxInt(a, b int) int {
