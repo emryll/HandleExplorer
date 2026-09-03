@@ -39,14 +39,18 @@ type HandleCache struct {
 
 // Set handle cache state as being refreshed.
 // Call CacheReady when the refresh has finished.
-// This WILL write lock the handle cache mutex.
-func (c *HandleCache) SetRefresh() {
+// Return value true indicates refresh was set,
+// while false indicates refresh is in progress.
+// Only refresh the cache if this returns true!
+func (c *HandleCache) SetRefresh() bool {
 	c.refreshMu.Lock()
 	defer c.refreshMu.Unlock()
 
 	if c.refreshing == nil {
 		c.refreshing = make(chan struct{})
+		return true
 	}
+	return false
 }
 
 // Set the handle cache state as ready.
@@ -57,6 +61,9 @@ func (c *HandleCache) SetReady() {
 
 	if c.refreshing != nil {
 		close(c.refreshing)
+		// a closed channel is non-nil,
+		// but closing it causes panic
+		c.refreshing = nil
 	}
 }
 
@@ -215,6 +222,7 @@ func (handle *HandleEntry) GetObjectScore() int {
 }
 
 // Calculate the final priority of a handle entry.
+// Provided stamp must be in the format of unix millis.
 // Priority is based on age of handle and base priority of object.
 // A higher priority means that it should be cleaned up sooner.
 func (handle *HandleEntry) CalculatePriority(stamp ...int64) int {
@@ -235,6 +243,10 @@ func (handle *HandleEntry) CalculatePriority(stamp ...int64) int {
 	return (timeScore + objectScore) * HCC_MULTIPLIER_CONST
 }
 
+// Cleanup handle cache until cleanup quota is met.
+// Handle entries are prioritized with CalculatePriority,
+// and cleaned up in the order of this priority score.
+// If no quota is provided, HCC_DEFAULT_QUOTA will be used.
 func (c *HandleCache) Cleanup(quota ...int) {
 	var cleanupQuota int
 	if len(quota) == 0 {
@@ -251,7 +263,7 @@ func (c *HandleCache) Cleanup(quota ...int) {
 	}
 
 	//* get cache as slice
-	now := time.Now()
+	now := time.Now().UnixMilli()
 	handles := make([]handleWithPriority, 0, 5000)
 	for _, objectCache := range c.Cache {
 		for _, entries := range objectCache {
