@@ -1,6 +1,11 @@
 package tmenu
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"charm.land/bubbles/v2/textinput"
+	"github.com/charmbracelet/lipgloss"
+)
 
 //*=======================[ Styles ]======================
 
@@ -58,6 +63,51 @@ var (
 )
 
 //*=========================[ Generic helpers ]=========================
+
+func renderInput(ti *textinput.Model, width int) string {
+	value := ti.Value()
+
+	text := value
+	color := colorText
+
+	if text == "" {
+		text = ti.Placeholder
+		color = colorMuted
+	}
+
+	showCursor := ti.Focused()
+
+	maxLen := width
+	if showCursor {
+		maxLen--
+	}
+	if maxLen < 0 {
+		maxLen = 0
+	}
+
+	text = truncate(text, maxLen)
+
+	line := textStyle.
+		Foreground(color).
+		Render(text)
+
+	if showCursor {
+		line += cursorGlyphStyle.
+			Background(colorBg).
+			Render("_")
+	}
+
+	pad := width - lipgloss.Width(line)
+	if pad < 0 {
+		pad = 0
+	}
+
+	line += lipgloss.NewStyle().
+		Background(colorBg).
+		Render(strings.Repeat(" ", pad))
+
+	return line
+}
 
 func maxInt(a, b int) int {
 	if a > b {
