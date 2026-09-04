@@ -3,7 +3,7 @@ package tmenu
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 )
 
