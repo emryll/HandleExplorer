@@ -152,6 +152,26 @@ func formatList(values []string) string {
 	return strings.Join(values, ", ")
 }
 
+func padRight(s string, width int) string {
+	current := lipgloss.Width(s)
+	if current >= width {
+		return s
+	}
+	return s + textStyle.Render(strings.Repeat(" ", width-current))
+}
+
+func joinColumns(left string, leftWidth int, right string, rightWidth int) string {
+	left = truncate(left, leftWidth)
+	right = truncate(right, rightWidth)
+
+	left = padRight(
+		left,
+		leftWidth,
+	)
+
+	return left + right
+}
+
 func placeForm(width int, height int, form string) string {
 	if width <= 0 || height <= 0 {
 		return form
