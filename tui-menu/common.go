@@ -116,6 +116,42 @@ func maxInt(a, b int) int {
 	return b
 }
 
+func truncate(s string, width int) string {
+	const suffix = "..."
+
+	r := []rune(s)
+
+	if len(r) <= width {
+		return s
+	}
+
+	if width <= len(suffix) {
+		if width < 0 {
+			width = 0
+		}
+
+		return string(r[:width])
+	}
+
+	return string(r[:width-len(suffix)]) + suffix
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+
+	return s
+}
+
+func formatList(values []string) string {
+	if len(values) == 0 {
+		return "any"
+	}
+
+	return strings.Join(values, ", ")
+}
+
 func placeForm(width int, height int, form string) string {
 	if width <= 0 || height <= 0 {
 		return form
