@@ -712,3 +712,140 @@ func (m *processModel) renderPropertyChoice(label string, checked bool, cursor b
 
 	return prefix + nameStyle.Render(checkbox+" "+label)
 }
+
+//*=========================[ Helpers ]===============================
+
+func (m *processModel) syncFocus() {
+	m.path.Blur()
+	m.allowlistInput.Blur()
+	m.parentInput.Blur()
+
+	switch m.focus {
+	case processFocusPath:
+		m.path.Focus()
+
+	case processFocusAllowlist:
+		m.allowlistInput.Focus()
+
+	case processFocusParent:
+		m.parentInput.Focus()
+	}
+}
+
+func (m *processModel) recalcLayout() {
+	frameWidth := sectionStyle.GetHorizontalFrameSize()
+	boxWidth := m.width - (processFormSideMargin * 2)
+
+	if boxWidth < processTypeMinCellWidth+frameWidth {
+		boxWidth = processTypeMinCellWidth + frameWidth
+	}
+
+	m.typeBoxWidth = boxWidth
+	m.typeGridWidth = boxWidth - frameWidth
+
+	if m.typeGridWidth < processTypeMinCellWidth {
+		m.typeGridWidth = processTypeMinCellWidth
+	}
+
+	cols := m.typeGridWidth / processTypeMinCellWidth
+
+	if cols < 1 {
+		cols = 1
+	}
+	if cols > 4 {
+		cols = 4
+	}
+
+	m.typeCols = cols
+
+	m.typeCellWidth = m.typeGridWidth / cols
+	if m.typeCellWidth < 1 {
+		m.typeCellWidth = 1
+	}
+
+	//* Calculate the amount of vertical space
+	//* that the fixed parts of the form consume.
+
+	//? The object type grid is the only section whose
+	//? number of rows should change with terminal height.
+
+	//
+	// Header:
+	//
+	//   title
+	//   subtitle
+	//   blank
+	//
+	headerHeight := 3
+
+	//
+	// Three text/list sections:
+	//
+	//   border top
+	//   label
+	//   input
+	//   border bottom
+	//   blank line
+	//
+	textSectionHeight := 5
+
+	fixedHeight := headerHeight + (textSectionHeight * 3)
+
+	//
+	// Properties:
+	//
+	//   border top
+	//   title row
+	//   signature/elevation row
+	//   signature/elevation row
+	//   border bottom
+	//   blank line
+	//
+	propertiesHeight := 6
+
+	//
+	// Object type section overhead, excluding its actual object type rows:
+	//   border top
+	//   header
+	//   preview or blank
+	//   blank line
+	//   grid rows (handled separately)
+	//   scroll info (1 or 2 rows)
+	//   blank line
+	objectTypeOverhead := 10
+
+	//
+	// Help line.
+	// NOTE: this must be 2, not 1. helpStyle has MarginTop(1), which
+	// lipgloss renders as an extra blank line before the text, so
+	// the help line actually costs 2 rendered lines.
+	helpHeight := 2
+
+	fixedHeight +=
+		propertiesHeight +
+			objectTypeOverhead +
+			helpHeight
+
+	availableRows := m.height - fixedHeight
+	if availableRows < processMinVisibleRows {
+		availableRows = processMinVisibleRows
+	}
+	if availableRows > processMaxVisibleRows {
+		availableRows = processMaxVisibleRows
+	}
+
+	m.typeVisibleRows = availableRows
+
+	//
+	// Text inputs must fit inside the section's content area.
+	//
+	tiWidth := m.typeGridWidth
+
+	if tiWidth < 10 {
+		tiWidth = 10
+	}
+
+	m.path.Width = tiWidth
+	m.allowlistInput.Width = tiWidth
+	m.parentInput.Width = tiWidth
+}
