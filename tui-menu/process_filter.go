@@ -1,6 +1,7 @@
 package tmenu
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -263,7 +264,284 @@ func (m *processModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-//*==============================[ Helpers ]==================================
+//*===========================[ Render fields ]==================================
+
+func (m *processModel) renderObjectTypeSection() string {
+	style := sectionStyle
+
+	if m.focus == processFocusObjectTypes {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(m.typeBoxWidth)
+
+	selectedCount := 0
+
+	for _, selected := range m.selectedTypes {
+		if selected {
+			selectedCount++
+		}
+	}
+
+	header :=
+		labelStyle.Render("Object Types Accessed") +
+			textStyle.Render("  ") +
+			subtitleStyle.Render(
+				fmt.Sprintf(
+					"%d selected",
+					selectedCount,
+				),
+			)
+
+	filterLine := labelStyle.Render("Type to filter: ")
+
+	if m.typeFilter != "" {
+		filterWidth := m.typeGridWidth - 16
+
+		if filterWidth < 1 {
+			filterWidth = 1
+		}
+
+		filterText :=
+			truncate(
+				m.typeFilter,
+				filterWidth,
+			)
+
+		filterLine +=
+			titleStyle.Render(filterText)
+
+		filterLine +=
+			titleStyle.Render("|")
+	} else if m.focus == processFocusObjectTypes {
+		filterLine +=
+			titleStyle.Render("_")
+	}
+
+	visible := m.visibleTypeIndices()
+	cols := m.typeCols
+
+	if cols < 1 {
+		cols = 1
+	}
+
+	totalRows := 0
+
+	if len(visible) > 0 {
+		totalRows =
+			(len(visible) + cols - 1) / cols
+	}
+
+	visibleRows := m.typeVisibleRows
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	currentRow := 0
+	if len(visible) > 0 {
+		currentRow = m.typeCursor / cols
+	}
+
+	scrollOffset := 0
+
+	if totalRows > visibleRows {
+		scrollOffset = currentRow - visibleRows/2
+
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+	}
+
+	maxOffset := totalRows - visibleRows
+
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+
+	if scrollOffset > maxOffset {
+		scrollOffset = maxOffset
+	}
+
+	if currentRow < scrollOffset {
+		scrollOffset = currentRow
+	}
+
+	if currentRow >= scrollOffset+visibleRows {
+		scrollOffset = currentRow - visibleRows + 1
+	}
+
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	if scrollOffset > maxOffset {
+		scrollOffset = maxOffset
+	}
+
+	startRow := scrollOffset
+	endRow := scrollOffset + visibleRows
+
+	if endRow > totalRows {
+		endRow = totalRows
+	}
+
+	var grid strings.Builder
+	grid.WriteString(header)
+	grid.WriteString("\n")
+
+	if m.focus == processFocusObjectTypes && len(visible) > 0 {
+		realIdx := visible[m.typeCursor]
+
+		previewWidth := m.typeGridWidth - 3
+		if previewWidth < 1 {
+			previewWidth = 1
+		}
+
+		preview := truncate(m.objectTypes[realIdx], previewWidth)
+
+		grid.WriteString(
+			labelStyle.Render(">> "),
+		)
+		grid.WriteString(
+			textStyle.Render(preview),
+		)
+	}
+
+	grid.WriteString("\n\n")
+
+	if len(visible) == 0 {
+		grid.WriteString(
+			lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Italic(true).
+				Render(
+					`  no types match "` +
+						m.typeFilter +
+						`"`,
+				),
+		)
+
+		grid.WriteString("\n")
+	} else {
+		for row := startRow; row < endRow; row++ {
+			start := row * cols
+			end := start + cols
+
+			if end > len(visible) {
+				end = len(visible)
+			}
+
+			var cells []string
+			for pos := start; pos < end; pos++ {
+				cells = append(
+					cells,
+					m.renderProcessTypeCell(
+						visible[pos],
+						pos,
+					),
+				)
+			}
+
+			grid.WriteString(
+				lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					cells...,
+				),
+			)
+			grid.WriteString("\n")
+		}
+
+		actualRows := endRow - startRow
+		for i := actualRows; i < visibleRows; i++ {
+			grid.WriteString("\n")
+		}
+	}
+
+	scrollStyle :=
+		lipgloss.NewStyle().
+			Foreground(colorAccent).
+			Bold(true)
+
+	remainingRows := totalRows - endRow
+
+	if scrollOffset > 0 {
+		grid.WriteString(
+			scrollStyle.Render(
+				fmt.Sprintf(
+					"  ^ %d more above",
+					scrollOffset*cols,
+				),
+			),
+		)
+	}
+	grid.WriteString("\n")
+
+	if remainingRows > 0 {
+		grid.WriteString(
+			scrollStyle.Render(
+				fmt.Sprintf(
+					"  v %d more below",
+					remainingRows*cols,
+				),
+			),
+		)
+	}
+	grid.WriteString("\n")
+	grid.WriteString("\n")
+	grid.WriteString(filterLine)
+
+	return style.Render(
+		strings.TrimRight(grid.String(), "\n"),
+	) + "\n\n"
+}
+
+func (m *processModel) renderProcessTypeCell(realIdx int, visiblePos int) string {
+	const (
+		cursorWidth   = 2
+		checkboxWidth = 3
+		separator     = 1
+	)
+
+	nameWidth :=
+		m.typeCellWidth -
+			cursorWidth -
+			checkboxWidth -
+			separator
+
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+
+	name :=
+		truncate(
+			m.objectTypes[realIdx],
+			nameWidth,
+		)
+
+	checkbox := "[ ]"
+	nameStyle := textStyle
+
+	if m.selectedTypes[realIdx] {
+		checkbox = "[x]"
+		nameStyle = checkedStyle
+	}
+
+	prefix := textStyle.Render("  ")
+	if m.focus == processFocusObjectTypes && visiblePos == m.typeCursor {
+		prefix = cursorGlyphStyle.Render("> ")
+	}
+
+	nameLen := lipgloss.Width(name)
+	padding := nameWidth - nameLen
+
+	if padding < 0 {
+		padding = 0
+	}
+
+	return prefix +
+		nameStyle.Render(checkbox+" "+name) +
+		textStyle.Render(strings.Repeat(" ", padding))
+}
 
 func (m *processModel) renderPropertiesSection() string {
 	style := sectionStyle
@@ -365,11 +643,7 @@ func (m *processModel) renderPropertiesSection() string {
 	) + "\n\n"
 }
 
-func (m *processModel) renderPropertyChoice(
-	label string,
-	checked bool,
-	cursor bool,
-) string {
+func (m *processModel) renderPropertyChoice(label string, checked bool, cursor bool) string {
 	checkbox := "[ ]"
 
 	if checked {
