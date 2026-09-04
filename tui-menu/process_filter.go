@@ -543,6 +543,55 @@ func (m *processModel) renderProcessTypeCell(realIdx int, visiblePos int) string
 		textStyle.Render(strings.Repeat(" ", padding))
 }
 
+func (m *processModel) renderProcessTextSection(
+	label string,
+	ti *textinput.Model,
+	field processFocusField,
+) string {
+	style := sectionStyle
+
+	if m.focus == field {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(m.typeBoxWidth)
+
+	content :=
+		labelStyle.Render(label) + "\n" +
+			renderInput(ti, m.typeGridWidth)
+
+	return style.Render(content) + "\n\n"
+}
+
+func (m *processModel) renderListSection(
+	label string,
+	ti *textinput.Model,
+	count int,
+	field processFocusField) string {
+	style := sectionStyle
+
+	if m.focus == field {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(m.typeBoxWidth)
+
+	countText :=
+		fmt.Sprintf(
+			"%d entries",
+			count,
+		)
+
+	content :=
+		labelStyle.Render(label) +
+			textStyle.Render("  ") +
+			subtitleStyle.Render(countText) +
+			"\n" +
+			renderInput(ti, m.typeGridWidth)
+
+	return style.Render(content) + "\n\n"
+}
+
 func (m *processModel) renderPropertiesSection() string {
 	style := sectionStyle
 
