@@ -3,9 +3,9 @@ package tmenu
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Outer function for launching a TUI filter selection menu.
@@ -22,7 +22,7 @@ func PsFilterSelectionMenu() *ProcessFilter {
 		return nil
 	}
 
-	m := finalModel.(*ProcessFilterModel)
+	m := finalModel.(*processModel)
 	return m.result
 }
 
@@ -33,19 +33,16 @@ func initialProcessFilterModel() *processModel {
 	path.Placeholder = `e.g. C:\Windows\System32\explorer.exe`
 	path.CharLimit = 512
 	path.Prompt = ""
-	styleTextInput(&path)
 
 	allowlistInput := textinput.New()
 	allowlistInput.Placeholder = `e.g. C:\Windows\ or %appdata%`
 	allowlistInput.CharLimit = 512
 	allowlistInput.Prompt = ""
-	styleTextInput(&allowlistInput)
 
 	parentInput := textinput.New()
 	parentInput.Placeholder = `e.g. svchost.exe or a PID`
 	parentInput.CharLimit = 512
 	parentInput.Prompt = ""
-	styleTextInput(&parentInput)
 
 	m := &processModel{
 		focus: processFocusPath,
@@ -264,4 +261,131 @@ func (m *processModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+//*==============================[ Helpers ]==================================
+
+func (m *processModel) renderPropertiesSection() string {
+	style := sectionStyle
+
+	if m.focus == processFocusProperties {
+		style = focusedSectionStyle
+	}
+
+	style = style.Width(m.typeBoxWidth)
+
+	const (
+		// Width of the left sub-column ("Signed" / "Not signed").
+		signatureLeftSubWidth = 17
+
+		// Minimum width needed to fit the widest signature row
+		// ("Signed" + gap + "Hash mismatch") without truncation.
+		signatureContentMinWidth = 36
+
+		// Width reserved for the elevation column so its two
+		// options ("Elevated" / "Not elevated") stay aligned.
+		elevationColumnWidth = 18
+	)
+
+	gridWidth := m.typeGridWidth
+
+	if gridWidth < signatureContentMinWidth+elevationColumnWidth {
+		gridWidth = signatureContentMinWidth + elevationColumnWidth
+	}
+
+	leftColumnWidth := gridWidth - elevationColumnWidth
+
+	if leftColumnWidth < signatureContentMinWidth {
+		leftColumnWidth = signatureContentMinWidth
+	}
+
+	var b strings.Builder
+
+	signatureTitle := labelStyle.Render("Signature Status")
+	elevationTitle := labelStyle.Render("Elevation")
+
+	header := padRight(signatureTitle, leftColumnWidth) + elevationTitle
+
+	b.WriteString(header)
+	b.WriteString("\n")
+
+	signatureSigned := m.renderPropertyChoice(
+		"Signed",
+		m.signatureStatus[signatureSigned],
+		processPropertyCursor == 0,
+	)
+
+	signatureHashMismatch := m.renderPropertyChoice(
+		"Hash mismatch",
+		m.signatureStatus[signatureHashMismatch],
+		processPropertyCursor == 1,
+	)
+
+	signatureRow1 := padRight(
+		padRight(signatureSigned, signatureLeftSubWidth)+signatureHashMismatch,
+		leftColumnWidth,
+	)
+
+	elevationElevated := m.renderPropertyChoice(
+		"Elevated",
+		m.elevation[elevationElevated],
+		processPropertyCursor == 4,
+	)
+
+	b.WriteString(signatureRow1 + elevationElevated)
+	b.WriteString("\n")
+
+	signatureNotSigned := m.renderPropertyChoice(
+		"Not signed",
+		m.signatureStatus[signatureNotSigned],
+		processPropertyCursor == 2,
+	)
+
+	signatureOther := m.renderPropertyChoice(
+		"Other",
+		m.signatureStatus[signatureOther],
+		processPropertyCursor == 3,
+	)
+
+	signatureRow2 := padRight(
+		padRight(signatureNotSigned, signatureLeftSubWidth)+signatureOther,
+		leftColumnWidth,
+	)
+
+	elevationNotElevated := m.renderPropertyChoice(
+		"Not elevated",
+		m.elevation[elevationNotElevated],
+		processPropertyCursor == 5,
+	)
+
+	b.WriteString(signatureRow2 + elevationNotElevated)
+
+	return style.Render(
+		strings.TrimRight(b.String(), "\n"),
+	) + "\n\n"
+}
+
+func (m *processModel) renderPropertyChoice(
+	label string,
+	checked bool,
+	cursor bool,
+) string {
+	checkbox := "[ ]"
+
+	if checked {
+		checkbox = "[x]"
+	}
+
+	prefix := textStyle.Render("  ")
+	if cursor && m.focus == processFocusProperties {
+		prefix = cursorGlyphStyle.Render("> ")
+	}
+
+	nameStyle := textStyle
+
+	if checked {
+		nameStyle = checkedStyle
+	}
+
+	return prefix + nameStyle.Render(checkbox+" "+label)
 }
