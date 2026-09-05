@@ -1,9 +1,11 @@
 package tlist
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fatih/color"
 )
 
 //*======================[ Styles ]=========================
@@ -94,4 +96,84 @@ func (p *resultPicker[T]) renderBlankRow(bg lipgloss.Color) string {
 	return lipgloss.NewStyle().
 		Background(bg).
 		Render(strings.Repeat(" ", p.boxWidth))
+}
+
+//*========================[ Utils ]=========================
+
+func truncate(s string, width int) string {
+	const suffix = "..."
+
+	r := []rune(s)
+
+	if len(r) <= width {
+		return s
+	}
+
+	if width <= len(suffix) {
+		if width < 0 {
+			width = 0
+		}
+
+		return string(r[:width])
+	}
+
+	return string(r[:width-len(suffix)]) + suffix
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+
+	return s
+}
+
+func padRight(s string, width int) string {
+	current := lipgloss.Width(s)
+
+	if current >= width {
+		return s
+	}
+
+	return s + strings.Repeat(" ", width-current)
+}
+func clampScrollOffset(cursor, total, visible int) int {
+	if total <= visible {
+		return 0
+	}
+
+	offset := cursor - visible/2
+	if offset < 0 {
+		offset = 0
+	}
+
+	maxOffset := total - visible
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	if cursor < offset {
+		offset = cursor
+	}
+
+	if cursor >= offset+visible {
+		offset = cursor - visible + 1
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	return offset
+}
+
+var red = color.New(color.FgHiRed, color.Bold)
+
+func PrintError(format string, a ...any) {
+	red.Printf("[*] ")
+	fmt.Printf(format, a...)
 }
