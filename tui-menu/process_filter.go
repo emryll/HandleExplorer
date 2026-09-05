@@ -850,6 +850,40 @@ func (m *processModel) recalcLayout() {
 	m.parentInput.Width = tiWidth
 }
 
+func (m *processModel) addAllowlistEntry() {
+	value := strings.TrimSpace(
+		m.allowlistInput.Value(),
+	)
+
+	if value == "" {
+		return
+	}
+
+	m.allowlist = append(
+		m.allowlist,
+		value,
+	)
+
+	m.allowlistInput.Reset()
+}
+
+func (m *processModel) addParentEntry() {
+	value := strings.TrimSpace(
+		m.parentInput.Value(),
+	)
+
+	if value == "" {
+		return
+	}
+
+	m.parent = append(
+		m.parent,
+		value,
+	)
+
+	m.parentInput.Reset()
+}
+
 //*==============================[ Properties ]========================
 
 // processPropertyCursor:
