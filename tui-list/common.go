@@ -1,6 +1,8 @@
 package tlist
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -63,3 +65,33 @@ var (
 			Foreground(colorMuted).
 			Italic(true)
 )
+
+//*=====================[ Rendering ]=====================
+
+func placeForm(width, height int, form string) string {
+	if width <= 0 || height <= 0 {
+		return form
+	}
+
+	formHeight := lipgloss.Height(form)
+
+	vertical := lipgloss.Center
+
+	if formHeight >= height {
+		vertical = lipgloss.Top
+	}
+
+	return lipgloss.Place(
+		width,
+		height,
+		lipgloss.Center,
+		vertical,
+		form,
+	)
+}
+
+func (p *resultPicker[T]) renderBlankRow(bg lipgloss.Color) string {
+	return lipgloss.NewStyle().
+		Background(bg).
+		Render(strings.Repeat(" ", p.boxWidth))
+}
