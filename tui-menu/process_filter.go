@@ -849,3 +849,127 @@ func (m *processModel) recalcLayout() {
 	m.allowlistInput.Width = tiWidth
 	m.parentInput.Width = tiWidth
 }
+
+//*==============================[ Properties ]========================
+
+// processPropertyCursor:
+//
+//	0 = Signed
+//	1 = Hash mismatch
+//	2 = Not signed
+//	3 = Other
+//	4 = Elevated
+//	5 = Not elevated
+//
+// The signature layout is:
+//
+//	0             1
+//	Signed        Hash mismatch
+//
+//	2             3
+//	Not signed    Other
+//
+// Elevation is:
+//
+//	4
+//	Elevated
+//
+//	5
+//	Not elevated
+//
+// This is package-level because the existing model in this test program
+// already uses this cursor design.
+var processPropertyCursor int
+
+func (m *processModel) updateProperties(msg *tea.KeyMsg) {
+	switch msg.String() {
+	case "left":
+		switch processPropertyCursor {
+		case 1:
+			processPropertyCursor = 0
+
+		case 3:
+			processPropertyCursor = 2
+
+		case 4:
+			processPropertyCursor = 1
+
+		case 5:
+			processPropertyCursor = 3
+		}
+
+	case "right":
+		switch processPropertyCursor {
+		case 0:
+			processPropertyCursor = 1
+
+		case 2:
+			processPropertyCursor = 3
+
+		case 1:
+			processPropertyCursor = 4
+
+		case 3:
+			processPropertyCursor = 5
+		}
+
+	case "up":
+		switch processPropertyCursor {
+		case 2:
+			processPropertyCursor = 0
+
+		case 3:
+			processPropertyCursor = 1
+
+		case 5:
+			processPropertyCursor = 4
+		}
+
+	case "down":
+		switch processPropertyCursor {
+		case 0:
+			processPropertyCursor = 2
+
+		case 1:
+			processPropertyCursor = 3
+
+		case 4:
+			processPropertyCursor = 5
+		}
+
+	case " ":
+		m.toggleCurrentProperty()
+	}
+}
+
+func (m *processModel) signatureFocus() bool {
+	return processPropertyCursor < 4
+}
+
+func (m *processModel) toggleCurrentProperty() {
+	switch processPropertyCursor {
+	case 0:
+		m.signatureStatus[signatureSigned] =
+			!m.signatureStatus[signatureSigned]
+
+	case 1:
+		m.signatureStatus[signatureHashMismatch] =
+			!m.signatureStatus[signatureHashMismatch]
+
+	case 2:
+		m.signatureStatus[signatureNotSigned] =
+			!m.signatureStatus[signatureNotSigned]
+
+	case 3:
+		m.signatureStatus[signatureOther] =
+			!m.signatureStatus[signatureOther]
+
+	case 4:
+		m.elevation[elevationElevated] =
+			!m.elevation[elevationElevated]
+
+	case 5:
+		m.elevation[elevationNotElevated] =
+			!m.elevation[elevationNotElevated]
+	}
+}
