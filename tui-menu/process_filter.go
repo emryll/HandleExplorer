@@ -1007,3 +1007,164 @@ func (m *processModel) toggleCurrentProperty() {
 			!m.elevation[elevationNotElevated]
 	}
 }
+
+func (m *processModel) visibleTypeIndices() []int {
+	if m.typeFilter == "" {
+		idxs := make([]int, len(m.objectTypes))
+
+		for i := range m.objectTypes {
+			idxs[i] = i
+		}
+
+		return idxs
+	}
+
+	q := strings.ToLower(m.typeFilter)
+
+	var idxs []int
+
+	for i, t := range m.objectTypes {
+		if strings.Contains(
+			strings.ToLower(t),
+			q,
+		) {
+			idxs = append(idxs, i)
+		}
+	}
+
+	return idxs
+}
+
+func (m *processModel) updateObjectTypes(msg *tea.KeyMsg) {
+	visible := m.visibleTypeIndices()
+
+	n := len(visible)
+
+	if n == 0 {
+		m.typeCursor = 0
+	}
+
+	cols := m.typeCols
+
+	if cols < 1 {
+		cols = 1
+	}
+
+	switch msg.String() {
+	case "up":
+		if m.typeCursor-cols >= 0 {
+			m.typeCursor -= cols
+		}
+
+	case "down":
+		if m.typeCursor+cols < n {
+			m.typeCursor += cols
+		}
+
+	case "left":
+		if m.typeCursor%cols != 0 {
+			m.typeCursor--
+		}
+
+	case "right":
+		if m.typeCursor%cols != cols-1 &&
+			m.typeCursor+1 < n {
+			m.typeCursor++
+		}
+
+	case " ":
+		if n > 0 {
+			realIdx := visible[m.typeCursor]
+
+			m.selectedTypes[realIdx] =
+				!m.selectedTypes[realIdx]
+		}
+
+	case "backspace":
+		if len(m.typeFilter) > 0 {
+			r := []rune(m.typeFilter)
+
+			m.typeFilter = string(
+				r[:len(r)-1],
+			)
+
+			m.typeCursor = 0
+		}
+
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.typeFilter += string(msg.Runes)
+			m.typeCursor = 0
+		}
+	}
+
+	visible = m.visibleTypeIndices()
+
+	if len(visible) == 0 {
+		m.typeCursor = 0
+	} else if m.typeCursor >= len(visible) {
+		m.typeCursor = len(visible) - 1
+	}
+}
+
+func (m *processModel) buildFilter() *ProcessFilter {
+	var types []string
+
+	for i, t := range m.objectTypes {
+		if m.selectedTypes[i] {
+			types = append(types, t)
+		}
+	}
+
+	var signatures []string
+
+	if m.signatureStatus[signatureSigned] {
+		signatures = append(signatures, "Signed")
+	}
+
+	if m.signatureStatus[signatureNotSigned] {
+		signatures = append(signatures, "Not signed")
+	}
+
+	if m.signatureStatus[signatureHashMismatch] {
+		signatures = append(signatures, "Hash mismatch")
+	}
+
+	if m.signatureStatus[signatureOther] {
+		signatures = append(signatures, "Other")
+	}
+
+	var elevations []string
+
+	if m.elevation[elevationElevated] {
+		elevations = append(
+			elevations,
+			"Elevated",
+		)
+	}
+
+	if m.elevation[elevationNotElevated] {
+		elevations = append(
+			elevations,
+			"Not elevated",
+		)
+	}
+
+	return &ProcessFilter{
+		Path: m.path.Value(),
+
+		DirectoryAllowlist: append(
+			[]string(nil),
+			m.allowlist...,
+		),
+
+		ParentProcess: append(
+			[]string(nil),
+			m.parent...,
+		),
+
+		SignatureStatus: signatures,
+		Elevation:       elevations,
+		ObjectTypes:     types,
+	}
+}
