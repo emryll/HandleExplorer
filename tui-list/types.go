@@ -17,12 +17,6 @@ type Column struct {
 	Right     bool
 }
 
-type ListItem interface {
-	Columns() []Column
-	Fields() []string
-	Key() string
-}
-
 type StagedField interface {
 	// Returns progressively shorter versions of the right-pinned field.
 	//
