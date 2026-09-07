@@ -9,7 +9,7 @@ import (
 
 const (
 	CERT_VALID          = 1
-	CERT_MISSING        = 1
+	CERT_MISSING        = 2
 	CERT_HASH_MISMATCH  = 3
 	CERT_EXP_DISTRUST   = 4
 	CERT_UNTRUSTED_CA   = 5
@@ -43,12 +43,16 @@ var (
 )
 
 var ( //* Handle Cache Cleanup modifiers
-	HCC_MULTIPLIER_CONST  = 1
-	HCC_OBJECT_MULTIPLIER = 2
+	HCC_MULTIPLIER_CONST = 1
+	// these two just define the ratio
+	// between object type and age of entry
+	HCC_OBJECT_MULTIPLIER = 3
 	HCC_TIME_MULTIPLIER   = 2
-	HCC_TIME_POWER        = 1.5
+	// this one dictates how
+	// the elapsed time scales
+	HCC_TIME_POWER = 1.3
 
-	HCC_DEFAULT_QUOTA        = 50
+	HCC_DEFAULT_QUOTA        = 200
 	HCC_TOP_PRIORITY_BONUS   = 5
 	HCC_OBJECT_TIER_1_SCORE  = 2
 	HCC_OBJECT_TIER_2_SCORE  = 15
