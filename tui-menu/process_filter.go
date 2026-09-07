@@ -19,7 +19,7 @@ func PsFilterSelectionMenu() *ProcessFilter {
 
 	finalModel, err := menu.Run()
 	if err != nil {
-		PrintError("Failed to launch process filter selection menu: %v\n", err)
+		PrintError(nil, "Failed to launch process filter selection menu: %v\n", err)
 		return nil
 	}
 
