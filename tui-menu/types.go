@@ -1,6 +1,6 @@
 package tmenu
 
-import "charm.land/bubbles/v2/textinput"
+import "github.com/charmbracelet/bubbles/textinput"
 
 //*====================[ Object Type Picker ]=======================
 
@@ -58,6 +58,14 @@ type objectFilterModel struct {
 
 	result *HandleFilter
 }
+
+// Shared layout constants
+const (
+	typeMinCellWidth = 24
+	minVisibleRows   = 4
+	maxVisibleRows   = 8
+	formSideMargin   = 4
+)
 
 //*=====================[ Process Search Filter ]=======================
 
