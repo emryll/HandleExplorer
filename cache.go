@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -85,9 +84,13 @@ func (c *HandleCache) WaitReady() {
 
 // Initialize cache, refilling it. Mutex is handled internally. Concurrency safe method.
 func (c *HandleCache) Init() {
-	c.SetRefresh()
+	cb := GetBenchmarker("CacheRefresh")
+	if cb != nil {
+		stop := cb.Benchmark()
+		defer stop()
+	}
 
-	start := time.Now() //dbg
+	c.SetRefresh()
 	handleTable := GetGlobalHandleTable()
 
 	c.mu.Lock()
@@ -125,20 +128,19 @@ func (c *HandleCache) Init() {
 	}
 	c.mu.Unlock()
 
-	fmt.Printf("[dbg] found %d new entries\n", len(newEntries))
-	//TODO: THESE LOCKS ARE CAUSING AN INDEFINITE STALL
-	//TODO: FOR SOME REASON ON THE SECOND INIT, NOT FIRST
+	//fmt.Printf("[dbg] found %d new entries\n", len(newEntries))
 	g_ObjectAccessRegistry.mu.Lock()
 	defer g_ObjectAccessRegistry.mu.Unlock()
+	//fmt.Println("[dbg] acquired lock")
 	for _, entry := range newEntries {
 		//fmt.Printf("[dbg] add entry raw")
 		g_ObjectAccessRegistry.addEntryRaw(entry)
 	}
-	fmt.Printf("[dbg] Init took %dms\n", time.Since(start).Milliseconds())
 	c.TimeStamp = time.Now()
 	c.SetReady()
 
 	g_ProcessTable.UpdatePsHandleCount(psCounts)
+	//fmt.Println("[dbg] exit init()")
 }
 
 // Is handle table cache ready for use. Mutex is handled internally
@@ -181,8 +183,8 @@ func (c *HandleCache) Add(handle *HandleEntry) {
 
 // Remove all handle entries held by given process
 func (c *HandleCache) Remove(pid uint32) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.Cache, pid)
 }
 
