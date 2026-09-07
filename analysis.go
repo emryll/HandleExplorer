@@ -14,7 +14,7 @@ func RankProcessHandleCount() []*Process {
 		processes = append(processes, ps)
 	}
 	sort.Slice(processes, func(i, j int) bool {
-		return processes[i].HandleCount > processes[j].HandleCount
+		return processes[i].GetHandleCount() > processes[j].GetHandleCount()
 	})
 
 	return processes
