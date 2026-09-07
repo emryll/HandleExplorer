@@ -28,3 +28,42 @@ func (m *pickerModel[T]) Submitted() bool {
 func (m *pickerModel[T]) Result() *T {
 	return &m.result
 }
+
+func (m *pickerModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		m.picker.recalcLayout(
+			msg.Width,
+			msg.Height,
+			13,
+		)
+
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc", "q":
+			m.quitting = true
+			return m, tea.Quit
+
+		case "enter":
+			if item, ok := m.picker.selected(); ok {
+				m.result = item
+				m.hasResult = true
+				m.submitted = true
+			}
+
+			m.quitting = true
+			return m, tea.Quit
+		}
+
+		m.picker.update(msg)
+
+		return m, nil
+	}
+
+	return m, nil
+}
