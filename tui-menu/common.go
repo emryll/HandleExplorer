@@ -1,10 +1,13 @@
 package tmenu
 
 import (
+	"fmt"
+	"io"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fatih/color"
 )
 
 //*=======================[ Styles ]======================
@@ -195,4 +198,11 @@ func placeForm(width int, height int, form string) string {
 		form,
 		lipgloss.WithWhitespaceBackground(colorBg),
 	)
+}
+
+var red = color.New(color.FgHiRed, color.Bold)
+
+func PrintError(w io.Writer, format string, a ...any) {
+	red.Fprintf(w, "[*] ")
+	fmt.Fprintf(w, format, a...)
 }
