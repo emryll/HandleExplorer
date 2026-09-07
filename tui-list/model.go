@@ -2,6 +2,7 @@ package tlist
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func newPickerModel[T ListItem](items []T, title string, subtitle string, noun string) *pickerModel[T] {
@@ -66,4 +67,50 @@ func (m *pickerModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *pickerModel[T]) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	var help string
+	if len(m.picker.items) == 0 {
+		help = "esc cancel"
+	} else {
+		help = "up/down move - pgup/pgdown/home/end jump - enter select - esc cancel"
+	}
+
+	body := m.picker.view(
+		"HandleExplorer",
+		m.subtitle,
+		m.noun,
+	)
+
+	helpWidth := m.picker.boxWidth +
+		sectionStyle.GetHorizontalFrameSize()
+
+	helpText := truncate(help, helpWidth)
+
+	helpRow := lipgloss.NewStyle().
+		Background(colorPanel).
+		Foreground(colorMuted).
+		Width(helpWidth).
+		Align(lipgloss.Center).
+		Render(padRight(helpText, helpWidth))
+
+	body += helpRow
+	body += "\n"
+
+	content := placeForm(
+		m.width+1,
+		m.height,
+		body,
+	)
+
+	return lipgloss.NewStyle().
+		Background(colorPanel).
+		Width(m.width).
+		Height(m.height).
+		Render(content)
 }
