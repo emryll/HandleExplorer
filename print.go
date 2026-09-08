@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,16 +16,37 @@ import (
 //?  This file is responsible for non-TUI prints for the user, such as histograms.    |
 //?===================================================================================+
 
-func PrintProcess(pid uint32) {
-	ps := g_ProcessTable.LookupProcess(pid)
-	fmt.Printf("process %d\n", pid)
-	fmt.Printf("path: %s\n", ps.Path)
-
-	if ps.ParentPath != "" {
-		fmt.Printf("parent: %s (PID %d)\n", ps.ParentPath, ps.ParentPid)
-	} else {
-		fmt.Printf("parent: %d\n", ps.ParentPath)
+func PrintProcess(w io.Writer, pid uint32) {
+	if w == nil {
+		w = os.Stdout
 	}
+
+	ps := g_ProcessTable.LookupProcess(pid)
+	if ps == nil { //TODO: change this, allow with ps as nil
+		fmt.Fprintf(w, "No process found with PID %d in lookup table.\n", pid)
+		return
+	}
+
+	yellow.Fprintf(w, "\nprocess id %d\n", pid)
+	yellow.Fprintf(w, "path: ")
+	fmt.Fprintf(w, "%s\n", ps.Path)
+
+	yellow.Fprintf(w, "parent: ")
+	fmt.Fprintf(w, "PID %d", ps.ParentPid)
+	if ps.ParentPath != "" {
+		fmt.Fprintf(w, " (%s)", ps.ParentPath)
+	}
+	fmt.Fprintln(w)
+
+	yellow.Fprintf(w, "elevated: ")
+	if ps.Elevated {
+		fmt.Fprintln(w, "true")
+	} else {
+		fmt.Fprintln(w, "false")
+	}
+
+	yellow.Fprintf(w, "signature: ")
+	fmt.Fprintf(w, "%s\n", GetSigStatusAsString(ps.SigStatus))
 
 	//* handles
 	var totalHandles int
@@ -32,8 +54,9 @@ func PrintProcess(pid uint32) {
 	for _, count := range handlesByType {
 		totalHandles += count
 	}
-	fmt.Printf("\nhandles: %d\n", totalHandles)
-	PrintHandleDistribution(handlesByType)
+	yellow.Fprintf(w, "\nhandles: ")
+	fmt.Fprintf(w, "%d\n", totalHandles)
+	PrintHandleDistribution(w, handlesByType)
 
 	/*
 		//* most similar
@@ -44,15 +67,17 @@ func PrintProcess(pid uint32) {
 	*/
 
 	//* overlapping
-	fmt.Println("\naccess overlaps with:")
-	overlapping := g_ObjectAccessRegistry.FindOverlappingWithPs(pid)
+	overlapping, clusters := g_ObjectAccessRegistry.FindOverlappingWithPs(pid)
+	fmt.Fprintf(w, "\nprocess %d is a part of ", pid)
+	yellow.Fprintf(w, "%d", len(clusters))
+	fmt.Fprintln(w, " clusters")
+
+	yellow.Fprintln(w, "\naccess overlaps with:")
 	if len(overlapping) == 0 {
-		fmt.Printf("\tNone.\n\n")
+		fmt.Fprintf(w, "\tNone.\n\n")
 		return
 	}
 
-	// flatten the map to sort it
-	// and show top results only
 	type entry struct {
 		count int
 		pid   uint32
@@ -70,150 +95,163 @@ func PrintProcess(pid uint32) {
 			break
 		}
 		p := g_ProcessTable.LookupProcess(entries[i].pid)
-		if p != nil {
-			fmt.Printf("\t- %s (PID %d)", p.Path, p.ProcessId)
-		} else {
-			fmt.Printf("\t- PID %d (unknown)", entries[i].pid)
-		}
+		fmt.Fprintf(w, "\t- ")
 		if entries[i].count > 1 {
-			fmt.Printf(" [x%d]", entries[i].count)
+			fmt.Fprintf(w, "[x%d] ", entries[i].count)
 		}
-		fmt.Println()
+		fmt.Fprintf(w, "PID %d", entries[i].pid)
+
+		if p != nil && p.Path != "" {
+			fmt.Fprintf(w, " (%s)", filepath.Base(p.Path))
+		} else {
+			fmt.Fprintf(w, "(unknown)")
+		}
+		fmt.Fprintln(w)
 	}
 	if len(overlapping) > 5 {
-		fmt.Printf("\t(and %d others)\n", len(overlapping)-5)
+		fmt.Fprintf(w, "\t(and %d others)\n", len(overlapping)-5)
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
+
+	//* Overlapping processes path frequencies
+	frequencyTable := make(map[string]int, len(overlapping))
+	for pid := range overlapping {
+		var path string
+		if ps := g_ProcessTable.LookupProcess(pid); ps != nil {
+			path = ps.Path
+		}
+		frequencyTable[path]++
+	}
+	fmt.Fprintln(w, "overlapping processes:")
+	PrintPathDistribution(w, frequencyTable)
 }
 
-func PrintObject(objType uint32, name string) {
+func PrintObject(w io.Writer, objType uint32, name string) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if name == "" {
-		fmt.Println("Anonymous objects can't be tracked in the current version. :-/")
-		fmt.Println("Sorry about that... Better object tracking will be added in the future.")
+		fmt.Fprintln(w, "Anonymous objects can't be tracked in the current version. :-/")
+		fmt.Fprintln(w, "Sorry about that... Better object tracking will be added in the future.")
 		return
 	}
-	fmt.Printf("%s %s\n", GetTypeName(objType), name)
+	yellow.Fprintf(w, "%s", GetTypeName(objType))
+	fmt.Fprintf(w, " %s\n\n", orAnon(name))
 
 	pids := GetObjectAccessPids(objType, name)
 	if len(pids) == 0 {
-		fmt.Println("object not accessible by any processes")
+		fmt.Fprintln(w, "object not accessible by any processes")
 		return
 	}
 
-	fmt.Printf("accessible by %d processes:\n\t", len(pids))
-	for i := 0; i < len(pids); i++ {
-		if i != 0 {
-			fmt.Printf(", ")
-		}
-		fmt.Printf("%d", pids[i])
-		if i%16 == 0 {
-			fmt.Printf("\n\t")
-		}
-	}
+	fmt.Fprintf(w, "accessible by ")
+	yellow.Fprintf(w, "%d", len(pids))
+	fmt.Fprintln(w, " processes")
 
-	fmt.Println("access distribution:")
-	PrintAccessDistribution(objType, name)
+	fmt.Fprintln(w, "\naccess distribution:")
+	PrintAccessDistribution(w, objType, name)
+	fmt.Fprintln(w)
 }
 
 func (e *AccessEntry) Print(w io.Writer) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	fmt.Fprintf(w, "* Access by process %d (%s)\n",
 		e.Pid, orDash(filepath.Base(LookupProcessPath(e.Pid))))
 	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(e.Object))
-	if e.Name != "" {
-		fmt.Fprintf(w, "\tObject name: %s\n", e.Name)
-	}
+	fmt.Fprintf(w, "\tObject name: %s\n", orAnon(e.Name))
 	fmt.Fprintf(w, "\tAccess level: %v\n", e.GetAccessAsString())
+
+	fmt.Fprintln(w)
+	PrintObject(w, e.Object, e.Name)
+	fmt.Fprintln(w)
 }
 
 func (h *HandleEntry) Print(w io.Writer) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	fmt.Fprintf(w, "* Access by process %d (%s)\n",
 		h.Pid, orDash(filepath.Base(LookupProcessPath(h.Pid))))
 	fmt.Fprintf(w, "\tObject type: %s\n", GetTypeName(h.Type))
 	nameParam := h.GetParameter("Name")
+	var name string
 	if !nameParam.Empty() {
-		fmt.Fprintf(w, "\tObject name: %s\n", nameParam.GetValue())
+		name = nameParam.GetValue().(string)
 	}
+	fmt.Fprintf(w, "\tObject name: %s\n", orAnon(name))
 	fmt.Fprintf(w, "\tAccess level: %v\n", h.GetAccessAsString())
 }
 
-func (c *Cluster) Print() {
-	fmt.Printf("cluster size: %d\n", len(c.Members))
-	fmt.Printf("cluster members:\n\t")
-	for i, pid := range c.Members {
-		fmt.Printf("%d", pid)
-		if i+1 < len(c.Members) {
-			fmt.Print(", ")
-		}
+func (c *Cluster) Print(w io.Writer) {
+	if w == nil {
+		w = os.Stdout
 	}
+
+	fmt.Printf("cluster size: %d\n", len(c.Members))
+
+	frequencyTable := make(map[string]int)
+	for _, pid := range c.Members {
+		var path string
+		ps := g_ProcessTable.LookupProcess(pid)
+		if ps != nil {
+			path = ps.Path
+		}
+		frequencyTable[path]++
+	}
+	PrintPathDistribution(w, frequencyTable)
 	fmt.Println()
-	PrintObject(c.ObjType, c.ObjName)
+	PrintObject(w, c.ObjType, c.ObjName)
+}
+
+func (s *ClusterStats) Print(w io.Writer) {
+	if w == nil {
+		w = os.Stdout
+	}
+
+	fmt.Fprintf(w, "avg cluster size: ")
+	yellow.Fprintf(w, "%.1f\n", s.AvgSize)
+	fmt.Fprintf(w, "median cluster size: ")
+	yellow.Fprintf(w, "%.1f\n", s.MedianSize)
+
+}
+
+func (p *Process) Print(w io.Writer) {
+	PrintProcess(w, p.ProcessId)
 }
 
 //*========================[ Distribution Charts ]=================================
 
-func PrintHandleDistribution(handlesByType map[string]int) {
-	if handlesByType == nil || len(handlesByType) == 0 {
-
+func PrintHandleDistribution(w io.Writer, handlesByType map[string]int) {
+	if w == nil {
+		w = os.Stdout
 	}
+
 	if len(handlesByType) == 0 {
 		return
 	}
 
-	var (
-		maxValue    int
-		longestName int
-		maxWidth    = 35
-
-		yellow = color.New(color.FgHiYellow)
-	)
-
-	type entry struct {
-		objType string
-		count   int
-	}
-	entries := make([]entry, len(handlesByType))
+	entries := make([]dataEntry, len(handlesByType))
 	for objType, count := range handlesByType {
-		entries = append(entries, entry{objType: objType, count: count})
-		if len(objType) > longestName {
-			longestName = len(objType)
-		}
-		if count > maxValue {
-			maxValue = count
-		}
+		entries = append(entries, dataEntry{name: objType, value: count})
 	}
-	divider := strings.Repeat("─", longestName+maxWidth)
 
-	// sort object types in descending order
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].count > entries[j].count
-	})
-
-	fmt.Println(divider)
-	for _, entry := range entries {
-		yellow.Printf("%s", entry.objType)
-		fmt.Printf("%s  │  ", strings.Repeat(" ", longestName-len(entry.objType)))
-		fmt.Printf("%s %d\n",
-			GetHorizontalBar(entry.count, maxValue, maxWidth), entry.count)
-	}
-	fmt.Println(divider)
+	PrintHistogram(w, entries)
 }
 
 // Print the access distribution chart of a named object.
-func PrintAccessDistribution(objType uint32, name string) {
+func PrintAccessDistribution(w io.Writer, objType uint32, name string) {
 	if name == "" {
 		return
 	}
 
-	var (
-		maxValue    int
-		longestName int
-		maxWidth    = 30
-
-		yellow = color.New(color.FgHiYellow)
-	)
-
 	g_ObjectAccessRegistry.mu.RLock()
 	if len(g_ObjectAccessRegistry.ObjectLookup[objType]) == 0 {
+		g_ObjectAccessRegistry.mu.RUnlock()
 		return
 	}
 
@@ -225,42 +263,84 @@ func PrintAccessDistribution(objType uint32, name string) {
 		for _, entry := range entries {
 			flags := entry.GetAccessFlagsAsString()
 			for _, flag := range flags {
-				if len(flag) > longestName {
-					longestName = len(flag)
-				}
 				accessLevels[flag]++
 			}
 		}
 	}
 	// unlock manually instead of defer for shorter lock
 	g_ObjectAccessRegistry.mu.RUnlock()
-	divider := strings.Repeat("─", longestName+maxWidth)
 
-	// Convert to list for sorting
-	type entry struct {
-		flag  string
-		count int
-	}
-	entries := make([]entry, len(accessLevels))
+	entries := make([]dataEntry, len(accessLevels))
 	for flag, count := range accessLevels {
-		entries = append(entries, entry{flag: flag, count: count})
-		if count > maxValue {
-			maxValue = count
+		entries = append(entries, dataEntry{name: flag, value: count})
+	}
+	PrintHistogram(w, entries)
+}
+
+// Helper type for rendering diagrams
+type dataEntry struct {
+	name  string
+	value int
+}
+
+const DEFAULT_DIAGRAM_WIDTH = 70
+
+// TODO: truncate too long names with "..." cut-off
+func PrintHistogram(w io.Writer, entries []dataEntry) {
+	if w == nil {
+		w = os.Stdout
+	}
+
+	maxTotalWidth := DEFAULT_DIAGRAM_WIDTH
+	if ww, ok := w.(WidthWriter); ok {
+		maxTotalWidth = ww.Width()
+	}
+
+	if len(entries) == 0 {
+		return
+	}
+
+	var (
+		maxValue    int
+		longestName int
+		maxBarWidth int
+
+		yellow  = color.New(color.FgHiYellow)
+		divider = strings.Repeat("─", maxTotalWidth)
+	)
+
+	for _, entry := range entries {
+		if isEmptyName(entry.name) {
+			entry.name = "(unknown)"
+		}
+
+		if entry.value > maxValue {
+			maxValue = entry.value
+		}
+		if len(entry.name) > longestName {
+			longestName = len(entry.name)
 		}
 	}
-	// sort entries in descending order
+
+	// the -5 is for "  |  " between name and the bar
+	// the -1 is for a space at the end of the bar
+	maxBarWidth = maxTotalWidth - longestName - 5 - 1
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].count > entries[j].count
+		return entries[i].value > entries[j].value
 	})
 
-	fmt.Println(divider)
-	for flag, count := range accessLevels {
-		yellow.Printf("%s", flag)
-		fmt.Printf("%s  |  ", strings.Repeat(" ", longestName-len(flag)))
-		fmt.Printf("%s %d\n",
-			GetHorizontalBar(count, maxValue, maxWidth))
+	fmt.Fprintln(w, divider)
+	for _, entry := range entries {
+		if entry.value == 0 || isEmptyName(entry.name) {
+			continue
+		}
+		yellow.Fprintf(w, "%s", entry.name)
+		fmt.Fprintf(w, "%s  |  ", strings.Repeat(" ", longestName-len(entry.name)))
+		fmt.Fprintf(w, "%s ",
+			GetHorizontalBar(entry.value, maxValue, maxBarWidth))
+		yellow.Fprintf(w, "%d\n", entry.value)
 	}
-	fmt.Println(divider)
+	fmt.Fprintln(w, divider)
 }
 
 func PrintGlobalObjTypeDistribution() {
@@ -272,5 +352,19 @@ func PrintGlobalObjTypeDistribution() {
 func GetHorizontalBar(value int, maxValue int, maxWidth int) string {
 	relativeVal := float64(value) / float64(maxValue)
 	count := int(math.Round(float64(maxWidth) * relativeVal))
-	return strings.Repeat("█", count) + strings.Repeat(" ", maxWidth-count)
+
+	if count < 0 {
+		count = 0 // avoid panic
+	}
+
+	if count == 0 && value > 0 {
+		count = 1
+	}
+
+	barWidth := maxWidth - count
+	if barWidth < 0 {
+		barWidth = 0 // avoid panic
+	}
+
+	return strings.Repeat("█", count) + strings.Repeat(" ", barWidth)
 }
