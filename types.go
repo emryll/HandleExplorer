@@ -112,13 +112,14 @@ type SearchFilter struct {
 }
 
 type ProcessFilter struct {
-	Path      string
-	DirFilter []string
-	Parent    []string // pid or path
-	SigStatus int
-	Elevated  bool
-	ObjTypes  map[string]bool
-	Pids      []uint32
+	Path        string
+	DirFilter   []string
+	Pids        map[uint32]bool
+	Parent      map[string]bool // path or pid
+	ObjTypes    map[uint32]bool // object types accessed
+	SigStatus   map[int]bool
+	Elevated    bool // do you want to include elevated ones
+	NotElevated bool // do you want to include not-elevated ones
 }
 
 type ClusterFilter struct {

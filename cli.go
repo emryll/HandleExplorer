@@ -1,6 +1,8 @@
 package main
 
 import (
+	tlist "HandleExplorer/tui-list"
+	tmenu "HandleExplorer/tui-menu"
 	"bufio"
 	"context"
 	"flag"
@@ -30,7 +32,10 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 	g := color.New(color.FgHiGreen, color.Bold)
 	for {
 		wg.Add(1)
-		go HandleTable.CleanupIfNeeded()
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			HandleTable.CleanupIfNeeded()
+		}(wg)
 
 		g.Printf(" $ ")
 		command := GetInput(reader)
@@ -47,7 +52,12 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 
 		wg.Add(1)
 		// start refresh just in-case
-		go HandleTable.Init()
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			if !HandleTable.Valid() {
+				HandleTable.Init()
+			}
+		}(wg)
 	}
 }
 
@@ -68,10 +78,12 @@ func CliParseCommand(tokens []string) bool {
 		CliPsCommand(tokens[1:])
 	case "clusters", "c":
 		CliClustersCommand(tokens[1:])
+	case "overview", "info":
+		CliOverviewCommand()
 	/*case "outliers":
 	CliOutliersCommand(tokens[1:])*/
 	case "bm":
-		if BenchmarkRegistry == nil || len(BenchmarkRegistry) == 0 {
+		if len(BenchmarkRegistry) == 0 {
 			fmt.Println("No benchmark samples collected.")
 			return false
 		}
@@ -100,22 +112,33 @@ func CliParseCommand(tokens []string) bool {
 func CliPsCommand(tokens []string) {
 	var filter ProcessFilter
 	if len(tokens) == 0 {
-		filter = PsFilterSelectionMenu()
+		tfilter := tmenu.PsFilterSelectionMenu()
+		// convert imported type to native
+		filter = ConvertProcessFilter(*tfilter)
+	} else {
+		filter.Pids = make(map[uint32]bool)
+		pids := parsePsTargetString(tokens[0])
+		for _, pid := range pids {
+			filter.Pids[pid] = true
+		}
 	}
-	pids := parsePsTargetString(tokens)
-	filter.Pids = pids
 
-	if len(pids) == 1 {
-		PrintProcess(pids[0])
+	if len(filter.Pids) == 1 {
+		for ps := range filter.Pids {
+			PrintProcess(nil, ps)
+		}
 		return
-	} else if len(pids) == 0 {
+	} else if len(tokens) > 0 && len(filter.Pids) == 0 {
 		fmt.Printf("No processes found matching \"%v\"", tokens)
 		return
 	}
 
 	results := filter.Search()
-	if selected := RenderList(results); selected != nil {
-		selected.Print()
+	if len(results) == 0 {
+		fmt.Println("Search returned no results.")
+	}
+	if selected := tlist.RenderList(results); selected != nil {
+		selected.Print(nil)
 	}
 }
 
@@ -124,7 +147,9 @@ func CliPsCommand(tokens []string) {
 func CliFindCommand(flags []string) {
 	var filter SearchFilter
 	if len(flags) == 0 {
-		filter = ObjFilterSelectionMenu()
+		tfilter := tmenu.ObjFilterSelectionMenu()
+		// convert imported type to native
+		filter = ConvertHandleFilter(*tfilter)
 	} else {
 		filter = parseFindFlags(flags)
 	}
@@ -133,29 +158,42 @@ func CliFindCommand(flags []string) {
 		fmt.Println("You must enter atleast one search filter.")
 		return
 	}
+
 	entries := filter.Search()
-	if selected := RenderList(entries); selected != nil {
-		selected.Print()
+	if len(entries) == 0 {
+		fmt.Println("Search returned no results.")
+		return
+	}
+
+	if selected := tlist.RenderList(entries); selected != nil {
+		selected.Print(nil)
 	}
 }
 
 // Main routine for parsing and executing the
 // "clusters" command (find overlapping object access)
 func CliClustersCommand(flags []string) {
-	filter := parseClustersFlags(flags)
-	clusters := g_ObjectAccessRegistry.FindOverlapping(filter)
+	HandleTable.WaitReady()
 
-	if selected := RenderList(clusters); selected != nil {
-		selected.Print()
+	filter := parseClustersFlags(flags)
+	clusters, stats := g_ObjectAccessRegistry.FindOverlapping(&filter)
+
+	if selected := tlist.RenderList(clusters); selected != nil {
+		selected.Print(nil)
+		stats.Print(nil)
 	}
 }
 
 // Main routine for "overview" command.
 func CliOverviewCommand() {
-	fmt.Printf("handle count: %d\n", GetTotalHandleCount())
+	HandleTable.WaitReady()
+
+	fmt.Printf("handle count: ")
+	yellow.Printf("%d\n", GetTotalHandleCount())
 	PrintGlobalObjTypeDistribution()
 
-	fmt.Printf("process count: %d\n", GetTotalProcessCount())
+	fmt.Printf("process count: ")
+	yellow.Printf("%d\n", GetTotalProcessCount())
 	rankedProcesses := RankProcessHandleCount()
 	for i := 0; i < 5; i++ {
 		if i >= len(rankedProcesses) {
@@ -163,14 +201,15 @@ func CliOverviewCommand() {
 		}
 		ps := rankedProcesses[i]
 		name := filepath.Base(ps.Path)
-		fmt.Printf("\t- [%d handles] PID %d (%s)\n",
-			ps.GetHandleCount(), ps.ProcessId, orDash(name))
+		fmt.Printf("\t- [%d handles] ", ps.GetHandleCount())
+		yellow.Printf("PID %d", ps.ProcessId)
+		fmt.Printf("(%s)\n", orUnknown(name))
 	}
 
 	//TODO most wide-reaching
 
-	clusters, clusterStats := g_ObjectAccessRegistry.FindOverlapping()
-	fmt.Println("objects with overlapping access:")
+	clusters, clusterStats := g_ObjectAccessRegistry.FindOverlapping(nil)
+	fmt.Println("\nobjects with overlapping access:")
 	if len(clusters) == 0 {
 		fmt.Printf("\tNone.\n")
 	}
@@ -179,10 +218,14 @@ func CliOverviewCommand() {
 		if i >= len(clusters) {
 			break
 		}
-		fmt.Printf("\t- [%d] %s : %s", len(clusters[i].Members),
+		fmt.Printf("\t- [%d] %s : %s\n", len(clusters[i].Members),
 			GetTypeName(clusters[i].ObjType), clusters[i].ObjName)
 	}
-	clusterStats.Print()
+	if len(clusters) > 5 {
+		fmt.Printf("\t(and %d others)\n", len(clusters)-5)
+	}
+	fmt.Println()
+	clusterStats.Print(nil)
 }
 
 //*=================================[ Search filters ]===================================
@@ -192,6 +235,7 @@ func (f SearchFilter) Search() []*AccessEntry {
 	if !HandleTable.Valid() {
 		HandleTable.Init()
 	}
+	HandleTable.WaitReady()
 
 	g_ObjectAccessRegistry.mu.RLock()
 	defer g_ObjectAccessRegistry.mu.RUnlock()
@@ -214,12 +258,12 @@ func (f SearchFilter) Empty() bool {
 
 func (f ProcessFilter) Search() []*Process {
 	g_ProcessTable.mu.RLock()
-	defer g_ProcessTable.mu.RLock()
+	defer g_ProcessTable.mu.RUnlock()
 	var results []*Process
 
-	//* quick lookup, used internally when only path is provided
+	//* quick lookup, used only when pid is provided
 	if len(f.Pids) > 0 {
-		for _, pid := range f.Pids {
+		for pid := range f.Pids {
 			if ps, exists := g_ProcessTable.Table[pid]; exists && f.Passes(ps) {
 				results = append(results, ps)
 			}
@@ -236,22 +280,27 @@ func (f ProcessFilter) Search() []*Process {
 }
 
 func (f ProcessFilter) Passes(ps *Process) bool {
+	//* Process Id
+	if len(f.Pids) > 0 && !f.Pids[ps.ProcessId] {
+		return false
+	}
+
 	//* Path / Name
 	if f.Path != "" && ps.Path != f.Path &&
 		f.Path != filepath.Base(ps.Path) &&
 		filepath.Base(f.Path) != ps.Path {
 		return false
 	}
+
+	//* Directory
 	// does not qualify if it has no dir listed
 	// while the directory filter has been set
 	if f.Path == filepath.Base(f.Path) && len(f.DirFilter) > 0 {
 		return false
 	}
 
-	//* Directory
 	var dirFound bool
 	for _, dir := range f.DirFilter {
-		f.Path = NormalizePath(f.Path)
 		if strings.HasPrefix(f.Path, dir) { // allow subdirs
 			dirFound = true
 			break
@@ -263,16 +312,16 @@ func (f ProcessFilter) Passes(ps *Process) bool {
 
 	//* Parent
 	var parentFound bool
-	for _, parent := range f.Parent {
+	if f.Parent[ps.ParentPath] || f.Parent[filepath.Base(ps.ParentPath)] {
+		parentFound = true
+	}
+
+	for parent := range f.Parent {
 		if parent == "" {
 			continue
 		}
 		pid, err := strconv.Atoi(parent)
 		if err == nil && uint32(pid) == ps.ParentPid {
-			parentFound = true
-			break
-		}
-		if ps.ParentPath == parent || filepath.Base(ps.ParentPath) == parent {
 			parentFound = true
 			break
 		}
@@ -285,15 +334,19 @@ func (f ProcessFilter) Passes(ps *Process) bool {
 	if f.Elevated && !ps.Elevated {
 		return false
 	}
+	if f.NotElevated && ps.Elevated {
+		return false
+	}
+
 	//* Signature status
-	if f.SigStatus != 0 && f.SigStatus != ps.SigStatus {
+	if len(f.SigStatus) > 0 && !f.SigStatus[ps.SigStatus] {
 		return false
 	}
 
 	//* Accessed objects
 	accessed := GetObjectTypesAccessed(ps.ProcessId)
 	for objType := range f.ObjTypes {
-		if _, exists := accessed[GetTypeIdentifier(objType)]; !exists {
+		if !accessed[objType] {
 			return false
 		}
 	}
@@ -407,13 +460,11 @@ func CliHelpCommand(tokens []string) {
 }
 
 func PrintBasicHelp() {
-	fmt.Println("\t\"obj\" is an universal alias for \"object\".")
-	fmt.Println("\t\"ps\" is an universal alias for \"process\".\n")
 	fmt.Println("help [command]              Get help on available commands.")
-	fmt.Println("overview                    View the current status of data and generic analysis.")
-	fmt.Println("ps  [pid | path]            View a process, or search for processes with filters.")
+	fmt.Println("overview | info             View the current status of data and generic analysis.")
+	fmt.Println("ps  [pid | path]            View data about a process. No args opens up filter selection.")
 	fmt.Println("find  [flags]               Search for handles with filters. No args opens up a menu.")
 	fmt.Println("clusters [flags]            Find processes with overlapping object access.")
-	fmt.Println("outliers                    Find statistical outliers.")
+	//fmt.Println("outliers                    Find statistical outliers.")
 	fmt.Println("exit | quit | q             Exit the program.")
 }
