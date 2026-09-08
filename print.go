@@ -218,6 +218,61 @@ func (s *ClusterStats) Print(w io.Writer) {
 	fmt.Fprintf(w, "median cluster size: ")
 	yellow.Fprintf(w, "%.1f\n", s.MedianSize)
 
+	var (
+		appDataCount int
+		windirCount  int
+		pfCount      int
+		total        int
+	)
+
+	var (
+		appData = filepath.Join(os.Getenv("USERPROFILE"), "AppData")
+		windir  = os.Getenv("WINDIR")
+		pf      = os.Getenv("ProgramFiles")
+	)
+
+	appData = strings.ToUpper(appData)
+	windir = strings.ToUpper(windir)
+	pf = strings.ToUpper(pf)
+
+	for dir, count := range s.DirFrequency {
+		dir = strings.ToUpper(dir) // case-insensitive search
+		if strings.HasPrefix(dir, appData) {
+			appDataCount += count
+		}
+		if strings.HasPrefix(dir, windir) {
+			windirCount += count
+		}
+		if strings.HasPrefix(dir, pf) {
+			pfCount += count
+		}
+		total += count
+	}
+
+	remaining := total - windirCount - pfCount
+	pfPercentage := float64(pfCount) / float64(total) * 100
+	windirPercentage := float64(windirCount) / float64(total) * 100
+	appDataPercentage := float64(appDataCount) / float64(total) * 100
+	remainingPercentage := float64(remaining) / float64(total) * 100
+
+	yellow.Fprintf(w, "\n%.1f%%", pfPercentage)
+	fmt.Fprintln(w, " in Program Files")
+
+	yellow.Fprintf(w, "%.1f%%", windirPercentage)
+	fmt.Fprintf(w, " in Windows directory\n")
+
+	if appDataCount > 0 {
+		yellow.Fprintf(w, "%.1f%%", appDataPercentage)
+		fmt.Fprintf(w, " in AppData directory\n")
+	}
+	yellow.Fprintf(w, "%.1f%%", remainingPercentage)
+	fmt.Fprintf(w, " in ")
+	yellow.Fprintf(w, "%d", total-appDataCount-windirCount-pfCount)
+	fmt.Fprintf(w, " other directories\n")
+
+	fmt.Fprintln(w)
+	//PrintDirDistribution(w, s.DirFrequency)
+	//fmt.Fprintln(w)
 }
 
 func (p *Process) Print(w io.Writer) {
