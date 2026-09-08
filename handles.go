@@ -24,7 +24,7 @@ func GetGlobalHandleTable() []HandleEntry {
 		handleTable = append(handleTable, v.GoEntry())
 	}
 	C.free(unsafe.Pointer(cHandleEntries))
-    g_SessionStats.SetHandleCount(int(handleCount))
+	g_SessionStats.SetHandleCount(int(handleCount))
 	return handleTable
 }
 
@@ -34,6 +34,7 @@ func (h HandleEntry) ConvertToAccessEntry() AccessEntry {
 	entry.Handle = h.Handle
 	entry.Pid = h.Pid
 	entry.Params = h.Parameters
+	entry.Access = h.Access
 
 	if entry.Object == OBJ_TYPE_PROCESS {
 		pathParam := h.GetParameter("ImagePath")
