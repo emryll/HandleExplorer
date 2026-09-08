@@ -1,6 +1,7 @@
 package main
 
 import (
+	tmenu "HandleExplorer/tui-menu"
 	"bufio"
 	"fmt"
 	"os"
@@ -310,4 +311,78 @@ func (s *SessionStats) SetHandleCount(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.TotalActiveHandles = count
+}
+
+// The filter selection menu returns a type of its own,
+// since it's in another package. You can not define a method
+// for an imported type, which is why it needs to be converted.
+func ConvertHandleFilter(tfilter tmenu.HandleFilter) SearchFilter {
+	filter := SearchFilter{
+		Access: parseAccessString(tfilter.AccessLevel),
+		Pids:   findProcesses(tfilter.Process),
+		Names:  []string{tfilter.ObjectName},
+	}
+
+	for _, ntName := range tfilter.ObjectTypes {
+		filter.ObjType = append(filter.ObjType, GetTypeIdentifier(ntName))
+	}
+
+	return filter
+}
+
+// The filter selection menu returns a type of its own,
+// since it's in another package. You can not define a method
+// for an imported type, which is why it needs to be converted.
+func ConvertProcessFilter(tfilter tmenu.ProcessFilter) ProcessFilter {
+	filter := ProcessFilter{
+		Path:      NormalizePath(tfilter.Path),
+		Pids:      make(map[uint32]bool),
+		Parent:    make(map[string]bool),
+		ObjTypes:  make(map[uint32]bool),
+		SigStatus: make(map[int]bool),
+	}
+	for _, parent := range tfilter.ParentProcess {
+		filter.Parent[NormalizePath(parent)] = true
+	}
+
+	for _, dir := range tfilter.DirectoryAllowlist {
+		filter.DirFilter = append(filter.DirFilter, NormalizePath(dir))
+	}
+
+	for _, ntName := range tfilter.ObjectTypes {
+		filter.ObjTypes[GetTypeIdentifier(ntName)] = true
+	}
+
+	for _, status := range tfilter.SignatureStatus {
+		switch status {
+		case "Signed":
+			filter.SigStatus[CERT_VALID] = true
+		case "Not signed":
+			filter.SigStatus[CERT_MISSING] = true
+		case "Hash mismatch":
+			filter.SigStatus[CERT_HASH_MISMATCH] = true
+		case "Other":
+			filter.SigStatus[CERT_EXPIRED] = true
+			filter.SigStatus[CERT_REVOKED] = true
+			filter.SigStatus[CERT_EXP_DISTRUST] = true
+			filter.SigStatus[CERT_UNTRUSTED_CA] = true
+			filter.SigStatus[CERT_UNTRUSTED_ROOT] = true
+		}
+	}
+
+	for _, choice := range tfilter.Elevation {
+		if choice == "Elevated" {
+			filter.Elevated = true
+		} else {
+			filter.NotElevated = true
+		}
+	}
+
+	if !filter.Elevated && !filter.NotElevated {
+		// default fallback
+		filter.Elevated = false
+		filter.NotElevated = true
+	}
+
+	return filter
 }
