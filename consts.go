@@ -3,6 +3,7 @@ package main
 import (
 	"math/bits"
 	"sort"
+	"sync"
 
 	"golang.org/x/sys/windows"
 )
@@ -120,6 +121,7 @@ type BitFlag struct {
 
 // in this one there are no duplicates
 var valToEnum map[uint8][]BitFlag // domain key
+var fillOnce sync.Once
 
 func fillReverseEnumLookup() {
 	if len(valToEnum) > 0 {
@@ -229,7 +231,7 @@ var enumToVal = map[string]Enum{
 	"SEMAPHORE_MODIFY_STATE": Enum{Domain: DOMAIN_SEMAPHORE, Value: windows.SEMAPHORE_MODIFY_STATE},
 
 	"MUTEX_ALL_ACCESS":   Enum{Domain: DOMAIN_MUTEX, Value: windows.MUTEX_ALL_ACCESS},
-	"MUTEX_MODIFY_STATE": Enum{Domain: DOMAIN_MUTEX, Value: windows.MUTEX_ALL_ACCESS},
+	"MUTEX_MODIFY_STATE": Enum{Domain: DOMAIN_MUTEX, Value: windows.MUTEX_MODIFY_STATE},
 
 	"TIMER_ALL_ACCESS":   Enum{Domain: DOMAIN_TIMER, Value: windows.TIMER_ALL_ACCESS},
 	"TIMER_MODIFY_STATE": Enum{Domain: DOMAIN_TIMER, Value: windows.TIMER_MODIFY_STATE},

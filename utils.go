@@ -29,12 +29,12 @@ func GetInput(reader *bufio.Reader, msg ...string) string {
 }
 
 func PrintError(format string, v ...any) {
-	PrintWithRedLabel("[*]", format, v)
+	PrintWithRedLabel("[*]", format, v...)
 }
 
 func PrintWithRedLabel(label string, format string, v ...any) {
 	red.Printf("%s ", label)
-	fmt.Printf(format, v)
+	fmt.Printf(format, v...)
 }
 
 func PrintBanner() {
@@ -89,6 +89,8 @@ func (h *HandleEntry) GetAccessFlagsAsString() []string {
 // Returns string interpretation of all contained flags,
 // or if it couldn't find corresponding enums, it returns raw value
 func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
+	fillOnce.Do(fillReverseEnumLookup)
+
 	var flags []string
 	for _, entry := range valToEnum[domain] {
 		if mask&entry.Value == entry.Value {
@@ -107,6 +109,9 @@ func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
 	}
 
 	if len(flags) == 0 {
+		if len(array) > 0 && array[0] {
+			return []string{fmt.Sprintf("0x%X", mask)}
+		}
 		return mask
 	}
 
@@ -296,13 +301,13 @@ func GetTotalHandleCount() int {
 	return g_SessionStats.TotalActiveHandles
 }
 func (s *SessionStats) SetProcessCount(count int) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.TotalActiveProcesses = count
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.TotalActiveProcesses = count
 }
 
 func (s *SessionStats) SetHandleCount(count int) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.TotalActiveHandles = count
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.TotalActiveHandles = count
 }
