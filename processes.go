@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
@@ -353,6 +354,37 @@ func IsSigned(path string) (int, error) {
 		}
 	}
 	return 0, ret
+}
+
+// Check the status of a file's digital signature, returned as an enum (CERT_).
+// If string conversion fails, or an unexpected status is received,
+// then the corresponding error is returned. Otherwise the error is nil.
+// This has a timeout to prevent WinVerifyTrustEx from freezing the program.
+// You can provide your own timeout, or use default timeout of 5 seconds.
+func IsSignedWithTimeout(path string, timeout ...time.Duration) (int, error) {
+	type result struct {
+		status int
+		err    error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		status, err := IsSigned(path)
+		ch <- result{status, err}
+	}()
+
+	var timeLimit time.Duration
+	if len(timeout) > 0 {
+		timeLimit = timeout[0]
+	} else {
+		timeLimit = time.Second * 3
+	}
+
+	select {
+	case r := <-ch:
+		return r.status, r.err
+	case <-time.After(timeLimit):
+		return 0, fmt.Errorf("signature check timed out for %s", path)
+	}
 }
 
 // Check if a process has elevated access rights.
