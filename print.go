@@ -281,6 +281,23 @@ func (p *Process) Print(w io.Writer) {
 
 //*========================[ Distribution Charts ]=================================
 
+func PrintDirDistribution(w io.Writer, frequencies map[string]int) {
+	if w == nil {
+		w = os.Stdout
+	}
+
+	if len(frequencies) == 0 {
+		return
+	}
+
+	var entries []dataEntry
+	for dir, count := range frequencies {
+		entries = append(entries, dataEntry{name: filepath.Dir(dir), value: count})
+	}
+
+	PrintHistogram(w, entries)
+}
+
 func PrintPathDistribution(w io.Writer, frequencies map[string]int) {
 	if w == nil {
 		w = os.Stdout
