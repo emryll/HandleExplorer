@@ -51,13 +51,13 @@ func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) (map[uint32]i
 
 // Find all objects accessed by several different processes.
 // This method will read lock the object access registry.
-func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) ([]Cluster, ClusterStats) {
+func (reg *ObjectAccessRegistry) FindOverlapping(filter *ClusterFilter) ([]*Cluster, ClusterStats) {
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 
 	var (
 		total       int // total size of clusters (for avg)
-		overlapping []Cluster
+		overlapping []*Cluster
 		accessed    = make(map[ProcessAccessKey][]uint32)
 		stats       = ClusterStats{
 			DirFrequency: make(map[string]int),
@@ -94,7 +94,7 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter ClusterFilter) ([]Cluste
 			ObjName: key.Name,
 		}
 		cluster.Members = append(cluster.Members, pids...)
-		overlapping = append(overlapping, cluster)
+		overlapping = append(overlapping, &cluster)
 
 		// collect data for cluster stats
 		for _, pid := range pids {
@@ -163,7 +163,7 @@ func (reg *ObjectAccessRegistry) addEntryRaw(entry AccessEntry) {
 	if entries, exists := reg.ProcessLookup[entry.Pid][processKey]; exists {
 		for _, ent := range entries {
 			if ent.Handle == entry.Handle {
-				ent.Object |= entry.Object
+				ent.Access |= entry.Access
 				return
 			}
 		}
@@ -274,6 +274,7 @@ func (reg *ObjectAccessRegistry) FindByObject(objectType []uint32, access Bitmas
 			objectMaps = append(objectMaps, reg.ObjectLookup[objType])
 		}
 	}
+	//TODO: add all instead if len(objectType) == 0
 	if len(objectMaps) == 0 {
 		return nil
 	}
@@ -283,12 +284,15 @@ func (reg *ObjectAccessRegistry) FindByObject(objectType []uint32, access Bitmas
 		nameFilter = make(map[string]bool)
 	)
 	for _, name := range names {
+		if isEmptyName(name) {
+			continue
+		}
 		nameFilter[name] = true
 	}
 
 	for _, typeMap := range objectMaps {
 		for key, entries := range typeMap {
-			if len(names) > 0 && !nameFilter[key.Name] {
+			if len(nameFilter) > 0 && !nameFilter[key.Name] {
 				continue
 			}
 			for _, entry := range entries {
