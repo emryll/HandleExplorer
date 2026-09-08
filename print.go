@@ -281,6 +281,26 @@ func (p *Process) Print(w io.Writer) {
 
 //*========================[ Distribution Charts ]=================================
 
+func PrintPathDistribution(w io.Writer, frequencies map[string]int) {
+	if w == nil {
+		w = os.Stdout
+	}
+
+	if len(frequencies) == 0 {
+		return
+	}
+
+	var entries []dataEntry
+	for path, count := range frequencies {
+		entries = append(entries, dataEntry{name: filepath.Base(path), value: count})
+	}
+
+	PrintHistogram(w, entries)
+	if frequencies[""] > 0 {
+		fmt.Fprintf(w, "\t(%d processes with unknown path)\n", frequencies[""])
+	}
+}
+
 func PrintHandleDistribution(w io.Writer, handlesByType map[string]int) {
 	if w == nil {
 		w = os.Stdout
