@@ -55,6 +55,10 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter *ClusterFilter) ([]*Clus
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 
+	if filter == nil {
+		filter = &ClusterFilter{}
+	}
+
 	var (
 		total       int // total size of clusters (for avg)
 		overlapping []*Cluster
