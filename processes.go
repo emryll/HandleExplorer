@@ -26,7 +26,7 @@ func NewProcessTable() *ProcessTable {
 // Main scanner routine for tracking active processes and their details.
 func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
-	if err := ScanProcesses(); err != nil {
+	if err := ScanProcesses(wg); err != nil {
 		PrintError("Failed to scan processes: %v\n", err)
 	}
 
@@ -37,7 +37,7 @@ func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-refresh.C:
-			if err := ScanProcesses(); err != nil {
+			if err := ScanProcesses(wg); err != nil {
 				PrintError("Failed to scan processes: %v\n", err)
 			}
 		}
@@ -46,7 +46,7 @@ func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 
 // Scan processes via th32 snapshot and add them to the process table. One time.
 // This will also check for any dead processes (without callbacks).
-func ScanProcesses() error {
+func ScanProcesses(wg *sync.WaitGroup) error {
 	//* get a process snapshot
 	handle, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -55,6 +55,7 @@ func ScanProcesses() error {
 	defer windows.CloseHandle(handle)
 	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
 	processes := make(map[uint32]*windows.ProcessEntry32)
+	var scanWg sync.WaitGroup
 
 	//* walk the processes
 	for {
@@ -66,8 +67,18 @@ func ScanProcesses() error {
 			return err
 		}
 
-		processes[entry.ProcessID] = &entry
-		RegisterProcess(&entry)
+		// entry can change since this loop
+		// continues while goroutines launch
+		entryCopy := entry
+		processes[entry.ProcessID] = &entryCopy
+
+		scanWg.Add(1)
+		// launching a goroutine because it is
+		// possible for WinVerifyTrustEx to stall
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			RegisterProcess(&entryCopy)
+		}(&scanWg)
 	}
 	g_SessionStats.SetProcessCount(len(processes))
 	// This tool doesn't have a driver for callbacks, so...
@@ -99,7 +110,7 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 		ParentPid: pe32.ParentProcessID,
 	}
 
-	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pe32.ProcessID)
 	if err == nil {
 		defer windows.CloseHandle(handle)
 		path, err := GetProcessExecutable(handle)
@@ -108,7 +119,7 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 			// check signature only if full path is known,
 			// otherwise this could be fooled by having
 			// a different file of same name in working dir
-			status, err := IsSigned(path)
+			status, err := IsSignedWithTimeout(path)
 			if err == nil {
 				entry.SigStatus = status
 			}
@@ -117,9 +128,9 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 		if err == nil {
 			entry.Elevated = elevated
 		}
-	} else {
+	} /* else {
 		PrintError("Failed to open process %d: %v\n", entry.ProcessId, err)
-	}
+	}*/
 
 	if entry.Path == "" {
 		entry.Path = windows.UTF16ToString(pe32.ExeFile[:])
@@ -129,7 +140,7 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 		return &entry
 	}
 
-	parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, ppid)
+	parentHandle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pe32.ParentProcessID)
 	// parent basic info
 	if err == nil {
 		defer windows.CloseHandle(parentHandle)
@@ -142,7 +153,7 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 }
 
 func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
-	if processes == nil || len(processes) == 0 {
+	if len(processes) == 0 {
 		return
 	}
 	if g_ProcessTable == nil || g_ProcessTable.Table == nil {
@@ -150,22 +161,28 @@ func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
 	}
 
 	g_ProcessTable.mu.RLock()
-	defer g_ProcessTable.mu.RUnlock()
-
+	var dead []uint32 // collect for shorter lock time
 	//* make sure all processes are found in the process snapshot
 	for pid := range g_ProcessTable.Table {
 		if _, exists := processes[pid]; exists {
 			continue
 		}
-		g_ProcessTable.RemoveProcess(pid)
 		g_ObjectAccessRegistry.RemoveEntriesByProcess(pid)
 		HandleTable.Remove(pid)
+		dead = append(dead, pid)
+	}
+	g_ProcessTable.mu.RUnlock()
+
+	g_ProcessTable.mu.Lock()
+	defer g_ProcessTable.mu.Unlock()
+	for _, pid := range dead {
+		g_ProcessTable.RemoveProcess(pid)
 	}
 }
 
 //*======================[ Process Table ]==============================
 
-var g_ProcessTable = &ProcessTable{}
+var g_ProcessTable = NewProcessTable()
 
 func (ps *ProcessTable) LookupProcess(pid uint32) *Process {
 	if ps.Table == nil {
@@ -194,9 +211,7 @@ func (ps *ProcessTable) RemoveProcess(pid uint32) {
 	if ps.Table == nil {
 		return
 	}
-	if _, exists := ps.Table[pid]; exists {
-		delete(ps.Table, pid)
-	}
+	delete(ps.Table, pid)
 }
 
 func LookupParent(pid uint32) (uint32, string) {
@@ -291,6 +306,7 @@ func GetProcessExecutable(handle windows.Handle) (string, error) {
 // Check the status of a file's digital signature, returned as an enum (CERT_).
 // If string conversion fails, or an unexpected status is received,
 // then the corresponding error is returned. Otherwise the error is nil.
+// NOTE: DONT CALL THIS BECAUSE IT CAN HANG FOR EVER!! Call IsSignedWithTimeout()
 func IsSigned(path string) (int, error) {
 	utf16Path, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -379,10 +395,10 @@ func GetParentPid(handle windows.Handle) (uint32, error) {
 
 func findProcesses(name string) []uint32 {
 	g_ObjectAccessRegistry.mu.RLock()
-	defer g_ObjectAccessRegistry.mu.RLock()
+	defer g_ObjectAccessRegistry.mu.RUnlock()
 
 	var pids []uint32
-	for pid, _ := range g_ObjectAccessRegistry.ProcessLookup {
+	for pid := range g_ObjectAccessRegistry.ProcessLookup {
 		path := LookupProcessPath(pid)
 		if name == path || name == filepath.Base(path) {
 			pids = append(pids, pid)
