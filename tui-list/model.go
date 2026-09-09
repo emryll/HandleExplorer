@@ -26,8 +26,8 @@ func (m *pickerModel[T]) Submitted() bool {
 
 // Result returns the selected item.
 // Only meaningful if Submitted() is true.
-func (m *pickerModel[T]) Result() *T {
-	return &m.result
+func (m *pickerModel[T]) Result() T {
+	return m.result
 }
 
 func (m *pickerModel[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
