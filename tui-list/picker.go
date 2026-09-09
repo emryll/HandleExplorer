@@ -144,10 +144,7 @@ func (p *resultPicker[T]) view(title, subtitle, noun string) string {
 
 	hasBelow := endRow < total
 
-	// ---------------------------------------------------------------
 	// Data rows
-	// ---------------------------------------------------------------
-
 	for i := p.scrollOffset; i < endRow; i++ {
 		b.WriteString(
 			p.renderDataRow(
@@ -159,10 +156,7 @@ func (p *resultPicker[T]) view(title, subtitle, noun string) string {
 		b.WriteString("\n")
 	}
 
-	// ---------------------------------------------------------------
 	// More-above indicator
-	// ---------------------------------------------------------------
-
 	if scrolled {
 		b.WriteString(
 			scrollStyle.Render(
@@ -176,10 +170,7 @@ func (p *resultPicker[T]) view(title, subtitle, noun string) string {
 		b.WriteString("\n")
 	}
 
-	// ---------------------------------------------------------------
 	// More-below indicator
-	// ---------------------------------------------------------------
-
 	if hasBelow {
 		b.WriteString(
 			scrollStyle.Render(
@@ -261,4 +252,235 @@ func (p *resultPicker[T]) selected() (T, bool) {
 	}
 
 	return p.items[p.cursor], true
+}
+
+//*=====================[ Render ]======================
+
+func (p *resultPicker[T]) rowCells(item T) []string {
+	cells := item.Fields()
+
+	if p.rightIndex < 0 || !p.rightStaged || p.rightStage < 0 {
+		return cells
+	}
+
+	sf, ok := any(item).(StagedField)
+
+	if !ok {
+		return cells
+	}
+
+	stages := sf.RightStages()
+
+	if p.rightStage >= len(stages) {
+		return cells
+	}
+
+	out := append([]string(nil), cells...)
+	out[p.rightIndex] = stages[p.rightStage]
+
+	return out
+}
+
+// ---------------------------------------------------------------------
+// Rendering helpers
+// ---------------------------------------------------------------------
+
+func (p *resultPicker[T]) renderCell(
+	text string,
+	width int,
+	bg lipgloss.Color,
+	style lipgloss.Style,
+) string {
+	if width <= 0 {
+		return ""
+	}
+
+	text = truncate(text, width)
+
+	return style.
+		Background(bg).
+		Render(padRight(text, width))
+}
+
+// renderLine guarantees that the returned line is exactly boxWidth
+// cells wide.
+//
+// This is the important invariant:
+//
+//	lipgloss.Width(renderLine(...)) == p.boxWidth
+//
+// The section itself then adds its border around that exact content
+// width.
+func (p *resultPicker[T]) renderLine(
+	cells []string,
+	bg lipgloss.Color,
+	styleFn func(colIndex int) lipgloss.Style,
+) string {
+	gapStyle := lipgloss.NewStyle().
+		Background(bg)
+
+	var leftParts []string
+
+	rightText := ""
+	rightWidth := 0
+	rightIndex := -1
+
+	for i, col := range p.columns {
+		text := ""
+
+		if i < len(cells) {
+			text = cells[i]
+		}
+
+		if col.Right {
+			rightIndex = i
+			rightWidth = p.colWidths[i]
+			rightText = text
+			continue
+		}
+
+		if p.colWidths[i] <= 0 {
+			continue
+		}
+
+		leftParts = append(
+			leftParts,
+			p.renderCell(
+				text,
+				p.colWidths[i],
+				bg,
+				styleFn(i),
+			),
+		)
+	}
+
+	line := strings.Join(
+		leftParts,
+		gapStyle.Render(strings.Repeat(" ", columnGap)),
+	)
+
+	// No visible right column.
+	if rightIndex < 0 || rightWidth <= 0 {
+		width := lipgloss.Width(line)
+
+		if width < p.boxWidth {
+			line += gapStyle.Render(
+				strings.Repeat(" ", p.boxWidth-width),
+			)
+		}
+
+		return line
+	}
+
+	leftWidth := lipgloss.Width(line)
+
+	// Space between the left columns and right-pinned column.
+	gap := p.boxWidth - leftWidth - rightWidth
+
+	if gap < rightColumnGap {
+		// Right column no longer fits.
+		//
+		// The sizing pass should normally prevent this, but this keeps
+		// rendering safe if widths become inconsistent.
+		if leftWidth < p.boxWidth {
+			line += gapStyle.Render(
+				strings.Repeat(" ", p.boxWidth-leftWidth),
+			)
+		}
+
+		return line
+	}
+
+	line += gapStyle.Render(
+		strings.Repeat(" ", gap),
+	)
+
+	line += p.renderCell(
+		rightText,
+		rightWidth,
+		bg,
+		styleFn(rightIndex),
+	)
+
+	// Final normalization.
+	width := lipgloss.Width(line)
+
+	if width < p.boxWidth {
+		line += gapStyle.Render(
+			strings.Repeat(" ", p.boxWidth-width),
+		)
+	}
+
+	if width > p.boxWidth {
+		line = truncate(line, p.boxWidth)
+	}
+	return line
+}
+func (p *resultPicker[T]) headerLine() string {
+	titles := make([]string, len(p.columns))
+
+	for i, col := range p.columns {
+		titles[i] = strings.ToUpper(col.Title)
+	}
+
+	style := func(i int) lipgloss.Style {
+		return lipgloss.NewStyle().
+			Foreground(columnColors[i%len(columnColors)]).
+			Bold(true)
+	}
+
+	// Use the panel background for the header so it visually matches
+	// the section instead of introducing another background.
+	return p.renderLine(
+		titles,
+		colorPanel,
+		style,
+	)
+}
+
+func (p *resultPicker[T]) ruleLine() string {
+	return subtitleStyle.Render(
+		strings.Repeat("─", p.boxWidth),
+	)
+}
+
+func (p *resultPicker[T]) renderDataRow(item T, isCursor bool, zebra bool) string {
+	fields := p.rowCells(item)
+
+	if isCursor {
+		style := func(int) lipgloss.Style {
+			return lipgloss.NewStyle().
+				Foreground(colorSelectedFg).
+				Bold(true)
+		}
+
+		return p.renderLine(
+			fields,
+			colorSelectedBg,
+			style,
+		)
+	}
+
+	bg := colorRowEven
+
+	if zebra {
+		bg = colorRowOdd
+	}
+
+	style := func(i int) lipgloss.Style {
+		s := lipgloss.NewStyle().
+			Foreground(columnColors[i%len(columnColors)])
+
+		if i < len(p.columns) && p.columns[i].Highlight {
+			s = s.Bold(true)
+		}
+
+		return s
+	}
+
+	return p.renderLine(
+		fields,
+		bg,
+		style,
+	)
 }
