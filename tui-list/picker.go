@@ -256,6 +256,240 @@ func (p *resultPicker[T]) selected() (T, bool) {
 
 //*=====================[ Render ]======================
 
+// recalcColumnWidths calculates the natural width of every column from
+// its header and all of its values.
+func (p *resultPicker[T]) recalcColumnWidths() {
+	p.colWidths = make([]int, len(p.columns))
+
+	for i, col := range p.columns {
+		p.colWidths[i] = lipgloss.Width(strings.ToUpper(col.Title))
+	}
+
+	for _, item := range p.items {
+		fields := item.Fields()
+
+		for i := 0; i < len(p.colWidths) && i < len(fields); i++ {
+			if width := lipgloss.Width(fields[i]); width > p.colWidths[i] {
+				p.colWidths[i] = width
+			}
+		}
+	}
+}
+
+// fitColumnsToWidth shrinks the non-right columns so the table fits.
+//
+// The right column is reserved first. This prevents the left columns
+// from consuming space that belongs to the right-pinned column.
+func (p *resultPicker[T]) fitColumnsToWidth() {
+	var nonRight []int
+
+	for i := range p.colWidths {
+		if i != p.rightIndex {
+			nonRight = append(nonRight, i)
+		}
+	}
+
+	if len(nonRight) == 0 {
+		return
+	}
+
+	available := p.boxWidth
+
+	// Reserve the current right-column width.
+	if p.rightIndex >= 0 && p.colWidths[p.rightIndex] > 0 {
+		available -= p.colWidths[p.rightIndex]
+		available -= rightColumnGap
+	}
+
+	// Reserve gaps between the ordinary columns.
+	if len(nonRight) > 1 {
+		available -= columnGap * (len(nonRight) - 1)
+	}
+
+	if available < 0 {
+		available = 0
+	}
+
+	total := 0
+
+	for _, i := range nonRight {
+		total += p.colWidths[i]
+	}
+
+	excess := total - available
+
+	for excess > 0 {
+		widestIndex := -1
+		widestWidth := minColumnWidth
+
+		for _, i := range nonRight {
+			if p.colWidths[i] > widestWidth {
+				widestWidth = p.colWidths[i]
+				widestIndex = i
+			}
+		}
+
+		if widestIndex < 0 {
+			break
+		}
+
+		room := p.colWidths[widestIndex] - minColumnWidth
+
+		if room <= 0 {
+			break
+		}
+
+		reduce := excess
+
+		if reduce > room {
+			reduce = room
+		}
+
+		p.colWidths[widestIndex] -= reduce
+		excess -= reduce
+	}
+}
+
+// recalcRightColumn determines the width/detail level of the right
+// column after the ordinary columns have been sized.
+func (p *resultPicker[T]) recalcRightColumn() {
+	if p.rightIndex < 0 {
+		return
+	}
+
+	// Non-staged right columns simply use their natural width if it fits.
+	if !p.rightStaged {
+		used := 0
+		nonRight := 0
+
+		for i, width := range p.colWidths {
+			if i == p.rightIndex {
+				continue
+			}
+
+			used += width
+			nonRight++
+		}
+
+		if nonRight > 1 {
+			used += columnGap * (nonRight - 1)
+		}
+
+		available := p.boxWidth - used - rightColumnGap
+
+		if available < p.colWidths[p.rightIndex] {
+			p.colWidths[p.rightIndex] = 0
+		}
+
+		return
+	}
+
+	// Calculate the width remaining after the non-right columns.
+	used := 0
+	nonRight := 0
+
+	for i, width := range p.colWidths {
+		if i == p.rightIndex {
+			continue
+		}
+
+		used += width
+		nonRight++
+	}
+
+	if nonRight > 1 {
+		used += columnGap * (nonRight - 1)
+	}
+
+	available := p.boxWidth - used - rightColumnGap
+
+	if available <= 0 {
+		p.rightStage = -1
+		p.colWidths[p.rightIndex] = 0
+		return
+	}
+
+	// Find the maximum number of stages any item has.
+	maxStages := 0
+
+	for _, item := range p.items {
+		sf, ok := any(item).(StagedField)
+		if !ok {
+			continue
+		}
+
+		if n := len(sf.RightStages()); n > maxStages {
+			maxStages = n
+		}
+	}
+
+	// Stage 0 is the most detailed. Use the first stage that fits.
+	for stage := 0; stage < maxStages; stage++ {
+		width := 0
+
+		for _, item := range p.items {
+			sf, ok := any(item).(StagedField)
+			if !ok {
+				continue
+			}
+
+			stages := sf.RightStages()
+
+			if stage >= len(stages) {
+				continue
+			}
+
+			if w := lipgloss.Width(stages[stage]); w > width {
+				width = w
+			}
+		}
+
+		if width > 0 && width <= available {
+			p.rightStage = stage
+			p.colWidths[p.rightIndex] = width
+			return
+		}
+	}
+
+	// No stage fits.
+	p.rightStage = -1
+	p.colWidths[p.rightIndex] = 0
+}
+
+func (p *resultPicker[T]) recalcLayout(width, height, heightReserve int) {
+	frameWidth := sectionStyle.GetHorizontalFrameSize()
+
+	boxWidth := width - (sideMargin * 2)
+	if boxWidth < 30 {
+		boxWidth = 30
+	}
+
+	p.boxWidth = boxWidth - frameWidth
+	if p.boxWidth < 20 {
+		p.boxWidth = 20
+	}
+
+	// visibleRows is the number of ITEM rows at the top of the list.
+	//
+	// When scrolling is possible, the picker reserves one additional
+	// row for the scroll indicator:
+	//
+	//   top:     N items + below
+	//   middle:  N-1 items + above + below
+	//   bottom:  N-1 items + above + blank
+	//
+	// Thus the box remains the same height as the cursor moves.
+	visibleRows := height - heightReserve + 1
+	if visibleRows < minVisibleRows {
+		visibleRows = minVisibleRows
+	}
+	p.visibleRows = visibleRows
+
+	p.recalcColumnWidths()
+	p.fitColumnsToWidth()
+	p.recalcRightColumn()
+}
+
 func (p *resultPicker[T]) rowCells(item T) []string {
 	cells := item.Fields()
 
@@ -280,10 +514,6 @@ func (p *resultPicker[T]) rowCells(item T) []string {
 
 	return out
 }
-
-// ---------------------------------------------------------------------
-// Rendering helpers
-// ---------------------------------------------------------------------
 
 func (p *resultPicker[T]) renderCell(
 	text string,
