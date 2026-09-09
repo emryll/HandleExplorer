@@ -32,10 +32,8 @@ func PrintProcess(w io.Writer, pid uint32) {
 	fmt.Fprintf(w, "%s\n", ps.Path)
 
 	yellow.Fprintf(w, "parent: ")
-	fmt.Fprintf(w, "PID %d", ps.ParentPid)
-	if ps.ParentPath != "" {
-		fmt.Fprintf(w, " (%s)", ps.ParentPath)
-	}
+	fmt.Fprintf(w, "PID %d ", ps.ParentPid)
+	grey.Fprintf(w, "(%s)", orUnknown(ps.ParentPath))
 	fmt.Fprintln(w)
 
 	yellow.Fprintf(w, "elevated: ")
@@ -378,6 +376,8 @@ type dataEntry struct {
 const DEFAULT_DIAGRAM_WIDTH = 70
 
 // TODO: truncate too long names with "..." cut-off
+// Print a histogram visualizing distribution of data.
+// If w implements the WidthWriter interface, it will control width.
 func PrintHistogram(w io.Writer, entries []dataEntry) {
 	if w == nil {
 		w = os.Stdout
