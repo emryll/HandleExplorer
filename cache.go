@@ -128,19 +128,15 @@ func (c *HandleCache) Init() {
 	}
 	c.mu.Unlock()
 
-	//fmt.Printf("[dbg] found %d new entries\n", len(newEntries))
 	g_ObjectAccessRegistry.mu.Lock()
 	defer g_ObjectAccessRegistry.mu.Unlock()
-	//fmt.Println("[dbg] acquired lock")
 	for _, entry := range newEntries {
-		//fmt.Printf("[dbg] add entry raw")
 		g_ObjectAccessRegistry.addEntryRaw(entry)
 	}
 	c.TimeStamp = time.Now()
 	c.SetReady()
 
 	g_ProcessTable.UpdatePsHandleCount(psCounts)
-	//fmt.Println("[dbg] exit init()")
 }
 
 // Is handle table cache ready for use. Mutex is handled internally
