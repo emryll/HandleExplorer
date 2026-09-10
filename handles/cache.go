@@ -1,6 +1,7 @@
 package handles
 
 import (
+	_ "HandleExplorer/app"
 	"HandleExplorer/profiler"
 	"math"
 	"sort"
@@ -9,8 +10,6 @@ import (
 )
 
 //*=================================[ Handle Table Cache ]=================================
-
-var HandleTable HandleCache
 
 // Since currently handles are retrieved
 // via global handle table lookup,
@@ -129,15 +128,15 @@ func (c *HandleCache) Init() {
 	}
 	c.mu.Unlock()
 
-	g_ObjectAccessRegistry.mu.Lock()
-	defer g_ObjectAccessRegistry.mu.Unlock()
+	AccessRegistry.mu.Lock()
+	defer AccessRegistry.mu.Unlock()
 	for _, entry := range newEntries {
-		g_ObjectAccessRegistry.addEntryRaw(entry)
+		AccessRegistry.addEntryRaw(entry)
 	}
 	c.TimeStamp = time.Now()
 	c.SetReady()
 
-	g_ProcessTable.UpdatePsHandleCount(psCounts)
+	PsTable.UpdatePsHandleCount(psCounts)
 }
 
 // Is handle table cache ready for use. Mutex is handled internally

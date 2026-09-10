@@ -6,6 +6,44 @@ package handles
 //?      This is why NtQueryObject returns a string, the NT name           |
 //?========================================================================+
 
+// Get the domain id for an object type.
+// This is used to translate access mask
+// values into human readable string enums.
+func GetDomainFromObject(objType uint32) uint8 {
+	var domain uint8
+	switch objType {
+	case OBJ_TYPE_PROCESS:
+		domain = DOMAIN_PROCESS
+	case OBJ_TYPE_THREAD:
+		domain = DOMAIN_THREAD
+	case OBJ_TYPE_EVENT:
+		domain = DOMAIN_EVENT
+	case OBJ_TYPE_MUTANT:
+		domain = DOMAIN_MUTEX
+	case OBJ_TYPE_TIMER, OBJ_TYPE_IRTIMER:
+		domain = DOMAIN_TIMER
+	case OBJ_TYPE_SEMAPHORE:
+		domain = DOMAIN_SEMAPHORE
+	case OBJ_TYPE_SECTION:
+		domain = DOMAIN_SECTION
+	case OBJ_TYPE_FILE:
+		domain = DOMAIN_FILE
+	case OBJ_TYPE_PIPE:
+		domain = DOMAIN_PIPE
+	case OBJ_TYPE_JOB:
+		domain = DOMAIN_JOB
+	case OBJ_TYPE_KEY:
+		domain = DOMAIN_KEY
+	case OBJ_TYPE_TOKEN:
+		domain = DOMAIN_TOKEN
+	case OBJ_TYPE_DESKTOP:
+		domain = DOMAIN_DESKTOP
+	default:
+		domain = DOMAIN_GLOBAL
+	}
+	return domain
+}
+
 // lower score indicates its more important
 var ObjectTypeTier = map[uint32]int{
 	OBJ_TYPE_TP_WORKER_FACTORY:       1,

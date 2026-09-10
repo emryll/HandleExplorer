@@ -73,7 +73,7 @@ type AccessEntry struct {
 	Name   string // name of object
 	Pid    uint32 // who accessed the object
 	Handle uint32 // raw handle value used as id
-	Access uint32
+	Access utils.Bitmask
 	Params map[string]utils.Parameter // extended object info
 }
 
@@ -86,8 +86,6 @@ type ObjectAccessRegistry struct {
 	// object type -> name -> process -> entry
 	ObjectLookup map[uint32]map[ObjectAccessKey][]*AccessEntry
 }
-
-var g_ObjectAccessRegistry = &ObjectAccessRegistry{}
 
 // With the triple nested map, amount of maps grows very quickly.
 // To fix this issue, the structure is partially flattened.
