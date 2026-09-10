@@ -1,10 +1,11 @@
 package process
 
 import (
-	_ "HandleExplorer/app"
 	"HandleExplorer/utils"
 	"context"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -26,9 +27,9 @@ func NewProcessTable() *ProcessTable {
 }
 
 // Main scanner routine for tracking active processes and their details.
-func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
+func ProcessScanner(wg *sync.WaitGroup, ctx context.Context, pt *ProcessTable, hr HandleRemover) {
 	defer wg.Done()
-	if err := ScanProcesses(wg); err != nil {
+	if err := ScanProcesses(wg, pt, hr); err != nil {
 		utils.PrintError("Failed to scan processes: %v\n", err)
 	}
 
@@ -39,7 +40,7 @@ func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-refresh.C:
-			if err := ScanProcesses(wg); err != nil {
+			if err := ScanProcesses(wg, pt, hr); err != nil {
 				utils.PrintError("Failed to scan processes: %v\n", err)
 			}
 		}
@@ -48,7 +49,7 @@ func ProcessScanner(wg *sync.WaitGroup, ctx context.Context) {
 
 // Scan processes via th32 snapshot and add them to the process table. One time.
 // This will also check for any dead processes (without callbacks).
-func ScanProcesses(wg *sync.WaitGroup) error {
+func ScanProcesses(wg *sync.WaitGroup, pt *ProcessTable, hr HandleRemover) error {
 	//* get a process snapshot
 	handle, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -79,29 +80,39 @@ func ScanProcesses(wg *sync.WaitGroup) error {
 		// possible for WinVerifyTrustEx to stall
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			RegisterProcess(&entryCopy)
+			if pt != nil {
+				pt.RegisterProcess(&entryCopy, hr)
+			}
 		}(&scanWg)
 	}
-	g_SessionStats.SetProcessCount(len(processes))
+	pt.RtStats.SetProcessCount(len(processes))
 	// This tool doesn't have a driver for callbacks, so...
-	ScanForDeadProcesses(processes)
+	if pt != nil {
+		pt.ScanForDeadProcesses(processes, hr)
+	}
 	return nil
+}
+
+// interface for process cleanup,
+// avoiding dependency cycles...
+// AccessTracker implements this.
+type HandleRemover interface {
+	Remove(pid uint32)
 }
 
 // Add process to process table and the correct graph.
 // If the process already exists, any missing data is filled.
-func RegisterProcess(entry *windows.ProcessEntry32) {
+func (pt *ProcessTable) RegisterProcess(entry *windows.ProcessEntry32, hr HandleRemover) {
 	name := windows.UTF16ToString(entry.ExeFile[:])
-	if ps := PsTable.LookupProcess(entry.ProcessID); ps != nil {
+	if ps := pt.LookupProcess(entry.ProcessID); ps != nil {
 		if filepath.Base(ps.Path) == name {
 			return // technically could still be different...
 		}
 		// new process with same pid, clear old one
-		HandleTable.Remove(entry.ProcessID)
-		AccessRegistry.RemoveEntriesByProcess(entry.ProcessID)
+		hr.Remove(entry.ProcessID)
 	}
 	process := CreateProcessEntry(entry)
-	PsTable.AddProcess(process)
+	pt.AddProcess(process)
 }
 
 // Create an initial process entry with basic details.
@@ -154,76 +165,173 @@ func CreateProcessEntry(pe32 *windows.ProcessEntry32) *Process {
 	return &entry
 }
 
-func ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32) {
+func (pt *ProcessTable) ScanForDeadProcesses(processes map[uint32]*windows.ProcessEntry32, hr HandleRemover) {
 	if len(processes) == 0 {
 		return
 	}
-	if PsTable == nil || PsTable.Table == nil {
+	if pt.Table == nil {
 		utils.PrintWithRedLabel("[WARNING]", "Global process table not initialized!!")
 	}
 
-	PsTable.mu.RLock()
+	pt.RLock()
 	var dead []uint32 // collect for shorter lock time
 	//* make sure all processes are found in the process snapshot
-	for pid := range PsTable.Table {
+	for pid := range pt.Table {
 		if _, exists := processes[pid]; exists {
 			continue
 		}
-		AccessRegistry.RemoveEntriesByProcess(pid)
-		HandleTable.Remove(pid)
+		hr.Remove(pid)
 		dead = append(dead, pid)
 	}
-	PsTable.mu.RUnlock()
+	pt.RUnlock()
 
-	PsTable.mu.Lock()
-	defer PsTable.mu.Unlock()
+	pt.Lock()
+	defer pt.Unlock()
 	for _, pid := range dead {
-		PsTable.RemoveProcess(pid)
+		pt.RemoveProcess(pid)
 	}
+}
+
+//*======================[ Search filter (CLI) ]========================
+
+func (pt *ProcessTable) Search(filter ProcessFilter) []*Process {
+	pt.RLock()
+	defer pt.RUnlock()
+	var results []*Process
+
+	//* quick lookup, used only when pid is provided
+	if len(filter.Pids) > 0 {
+		for pid := range filter.Pids {
+			if ps, exists := pt.Table[pid]; exists && filter.Passes(ps) {
+				results = append(results, ps)
+			}
+		}
+		return results
+	}
+	//* regular lookup
+	for _, ps := range pt.Table {
+		if filter.Passes(ps) {
+			results = append(results, ps)
+		}
+	}
+	return results
+}
+
+func (f ProcessFilter) Passes(ps *Process) bool {
+	//* Process Id
+	if len(f.Pids) > 0 && !f.Pids[ps.ProcessId] {
+		return false
+	}
+
+	//* Path / Name
+	if f.Path != "" && ps.Path != f.Path &&
+		f.Path != filepath.Base(ps.Path) &&
+		filepath.Base(f.Path) != ps.Path {
+		return false
+	}
+
+	//* Directory
+	// does not qualify if it has no dir listed
+	// while the directory filter has been set
+	if f.Path == filepath.Base(f.Path) && len(f.DirFilter) > 0 {
+		return false
+	}
+
+	var dirFound bool
+	for _, dir := range f.DirFilter {
+		if strings.HasPrefix(f.Path, dir) { // allow subdirs
+			dirFound = true
+			break
+		}
+	}
+	if len(f.DirFilter) > 0 && !dirFound {
+		return false
+	}
+
+	//* Parent
+	var parentFound bool
+	if f.Parent[ps.ParentPath] || f.Parent[filepath.Base(ps.ParentPath)] {
+		parentFound = true
+	}
+
+	for parent := range f.Parent {
+		if parent == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(parent)
+		if err == nil && uint32(pid) == ps.ParentPid {
+			parentFound = true
+			break
+		}
+	}
+	if len(f.Parent) > 0 && !parentFound {
+		return false
+	}
+
+	//* Process elevation
+	if f.Elevated && !ps.Elevated {
+		return false
+	}
+	if f.NotElevated && ps.Elevated {
+		return false
+	}
+
+	//* Signature status
+	if len(f.SigStatus) > 0 && !f.SigStatus[ps.SigStatus] {
+		return false
+	}
+
+	//* Accessed objects
+	accessed := f.reg.GetObjectTypesAccessed(ps.ProcessId)
+	for objType := range f.ObjTypes {
+		if !accessed[objType] {
+			return false
+		}
+	}
+	return true
 }
 
 //*======================[ Process Table ]==============================
 
-func (ps *ProcessTable) LookupProcess(pid uint32) *Process {
-	if ps.Table == nil {
+func (pt *ProcessTable) LookupProcess(pid uint32) *Process {
+	if pt.Table == nil {
 		return nil
 	}
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-	if process, exists := ps.Table[pid]; exists {
+	pt.RLock()
+	defer pt.RUnlock()
+	if process, exists := pt.Table[pid]; exists {
 		return process
 	}
 	return nil
 }
 
-func (ps *ProcessTable) AddProcess(process *Process) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
+func (pt *ProcessTable) AddProcess(process *Process) {
+	pt.Lock()
+	defer pt.Unlock()
 
-	if ps.Table == nil {
-		ps.Table = make(map[uint32]*Process)
+	if pt.Table == nil {
+		pt.Table = make(map[uint32]*Process)
 	}
-	ps.Table[process.ProcessId] = process
+	pt.Table[process.ProcessId] = process
 }
 
 // Does not lock the mutex
-func (ps *ProcessTable) RemoveProcess(pid uint32) {
-	if ps.Table == nil {
+func (pt *ProcessTable) RemoveProcess(pid uint32) {
+	if pt.Table == nil {
 		return
 	}
-	delete(ps.Table, pid)
+	delete(pt.Table, pid)
 }
 
-// Find all processes (IN THE OAR) with the
+// Find all processes with the
 // specified executable name or full path.
-func FindProcesses(name string) []uint32 {
-	AccessRegistry.mu.RLock()
-	defer AccessRegistry.mu.RUnlock()
+func (pt *ProcessTable) FindProcesses(name string) []uint32 {
+	pt.RLock()
+	defer pt.RUnlock()
 
 	var pids []uint32
-	for pid := range AccessRegistry.ProcessLookup {
-		path := LookupProcessPath(pid)
-		if name == path || name == filepath.Base(path) {
+	for pid, ps := range pt.Table {
+		if ps.Path == name || filepath.Base(ps.Path) == name {
 			pids = append(pids, pid)
 		}
 	}
@@ -233,9 +341,11 @@ func FindProcesses(name string) []uint32 {
 // Get the path of a processes source exe file.
 // Looked up in the process table if it exists.
 // If it does not, the process is looked up via win32.
-func LookupProcessPath(pid uint32) string {
-	if ps := PsTable.LookupProcess(pid); ps != nil {
-		return ps.Path
+func LookupProcessPath(pid uint32, pt *ProcessTable) string {
+	if pt != nil {
+		if ps := pt.LookupProcess(pid); ps != nil {
+			return ps.Path
+		}
 	}
 
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
@@ -249,10 +359,11 @@ func LookupProcessPath(pid uint32) string {
 	return ""
 }
 
-func LookupParent(pid uint32) (uint32, string) {
-	ps := PsTable.LookupProcess(pid)
-	if ps != nil {
-		return ps.ParentPid, ps.ParentPath
+func LookupParent(pid uint32, pt *ProcessTable) (uint32, string) {
+	if pt != nil {
+		if ps := pt.LookupProcess(pid); ps != nil {
+			return ps.ParentPid, ps.ParentPath
+		}
 	}
 
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
@@ -276,8 +387,8 @@ func (pt *ProcessTable) UpdatePsHandleCount(psCounts map[uint32]int) {
 	if len(psCounts) == 0 {
 		return
 	}
-	pt.mu.Lock()
-	defer pt.mu.Unlock()
+	pt.Lock()
+	defer pt.Unlock()
 
 	for pid, count := range psCounts {
 		if ps, exists := pt.Table[pid]; exists {
@@ -292,16 +403,16 @@ func (p *Process) GetHandleCount() int {
 
 // Get the total count of active processes.
 // This will read lock the process table.
-func GetTotalProcessCount() int {
-	PsTable.mu.RLock()
-	defer PsTable.mu.RUnlock()
-	return len(PsTable.Table)
+func (pt *ProcessTable) GetTotalProcessCount() int {
+	pt.RLock()
+	defer pt.RUnlock()
+	return len(pt.Table)
 }
 
 // Get the total handle count of a process.
 // This will read lock the process table.
-func GetHandleCountPs(pid uint32) int {
-	ps := PsTable.LookupProcess(pid)
+func (pt *ProcessTable) GetHandleCountPs(pid uint32) int {
+	ps := pt.LookupProcess(pid)
 	if ps == nil {
 		return 0
 	}

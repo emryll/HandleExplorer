@@ -1,6 +1,8 @@
 package process
 
 import (
+	"HandleExplorer/handles/registry"
+	"HandleExplorer/stats"
 	"sync"
 	"sync/atomic"
 )
@@ -33,11 +35,15 @@ type ProcessFilter struct {
 	SigStatus   map[int]bool
 	Elevated    bool // do you want to include elevated ones
 	NotElevated bool // do you want to include not-elevated ones
+	// avoid dependency cycle and ugly function prototype
+	reg *registry.ObjectAccessRegistry
 }
 
 type ProcessTable struct {
-	mu    sync.RWMutex
+	sync.RWMutex
 	Table map[uint32]*Process
+	// dependency injection
+	RtStats *stats.SessionStats
 }
 
 //*======================[ Constants ]==========================

@@ -4,83 +4,29 @@ import (
 	tlist "HandleExplorer/tui/list"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-//*======================[ Lookup Utils ]=======================
+// Get a list of all active processes
+// sorted in descending order of handle count.
+func (pt *ProcessTable) RankProcessHandleCount() []*Process {
+	var processes []*Process
 
-// TODO
-func FindProcesses(name string) []uint32 {
-	AccessRegistry.mu.RLock()
-	defer AccessRegistry.mu.RUnlock()
+	pt.RLock()
+	defer pt.RUnlock()
 
-	var pids []uint32
-	for pid := range AccessRegistry.ProcessLookup {
-		path := LookupProcessPath(pid)
-		if name == path || name == filepath.Base(path) {
-			pids = append(pids, pid)
-		}
+	for _, ps := range pt.Table {
+		processes = append(processes, ps)
 	}
-	return pids
-}
+	sort.Slice(processes, func(i, j int) bool {
+		return processes[i].GetHandleCount() > processes[j].GetHandleCount()
+	})
 
-// Get the path of a processes source exe file.
-// Looked up in the process table if it exists.
-// If it does not, the process is looked up via win32.
-func LookupProcessPath(pid uint32) string {
-	if ps := PsTable.LookupProcess(pid); ps != nil {
-		return ps.Path
-	}
-
-	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
-	if err != nil {
-		return ""
-	}
-	defer windows.CloseHandle(handle)
-	if path, err := GetProcessExecutable(handle); err == nil {
-		return path
-	}
-	return ""
-}
-
-func LookupParent(pid uint32) (uint32, string) {
-	ps := PsTable.LookupProcess(pid)
-	if ps != nil {
-		return ps.ParentPid, ps.ParentPath
-	}
-
-	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
-	if err != nil {
-		return 0, ""
-	}
-	defer windows.CloseHandle(handle)
-
-	ppid, err := GetParentPid(handle)
-	if err == nil {
-		return ppid, ""
-	}
-	return 0, ""
-}
-
-// Get the total count of active processes.
-// This will read lock the process table.
-func GetTotalProcessCount() int {
-	PsTable.mu.RLock()
-	defer PsTable.mu.RUnlock()
-	return len(PsTable.Table)
-}
-
-// Get the total handle count of a process.
-// This will read lock the process table.
-func GetHandleCountPs(pid uint32) int {
-	ps := PsTable.LookupProcess(pid)
-	if ps == nil {
-		return 0
-	}
-	return ps.GetHandleCount()
+	return processes
 }
 
 // *===================[ Process Utils ]======================
@@ -219,7 +165,29 @@ func GetParentPid(handle windows.Handle) (uint32, error) {
 	return uint32(pbi.InheritedFromUniqueProcessId), nil
 }
 
-//*===================[ List Picker (UI) ]===================
+func GetSigStatusAsString(status int) string {
+	switch status {
+	case CERT_VALID:
+		return "signed"
+	case CERT_MISSING:
+		return "not signed"
+	case CERT_HASH_MISMATCH:
+		return "hash mismatch"
+	case CERT_EXPIRED:
+		return "expired"
+	case CERT_REVOKED:
+		return "revoked"
+	case CERT_EXP_DISTRUST:
+		return "explicit distrust"
+	case CERT_UNTRUSTED_ROOT:
+		return "untrusted root CA"
+	case CERT_UNTRUSTED_CA:
+		return "untrusted certificate authority"
+	}
+	return "unknown"
+}
+
+//*===================[ ListItem (UI) interface methods ]===================
 
 func (p *Process) Columns() []tlist.Column {
 	return []tlist.Column{
