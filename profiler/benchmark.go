@@ -1,4 +1,4 @@
-package main
+package profiler
 
 import (
 	"fmt"
@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+//?===========================================================+
+//?   This is a utility file for conveniently benchmarking    |
+//?    functions and viewing collected benchmarking data.     |
+//?===========================================================+
+
+// Benchmark collection for a specific thing.
+// Collect many samples of performance.
 type Benchmarker struct {
 	mu       sync.RWMutex
 	entries  []time.Duration
@@ -93,12 +100,12 @@ func GetBenchmarker(name string) *Benchmarker {
 	if b, exists := BenchmarkRegistry[name]; exists {
 		return b
 	}
-	fmt.Printf("[dbg] create new benchmarker \"%s\"\n", name)
 	b := NewBenchmarker(name, 50000)
 	BenchmarkRegistry[name] = b
 	return b
 }
 
+// This is a little bit broken but dont worry about that
 func (b *Benchmarker) PrintDistribution() {
 	if len(b.entries) == 0 {
 		fmt.Printf("%s: no samples\n", b.Name)
