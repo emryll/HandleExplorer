@@ -1,6 +1,7 @@
 package process
 
 import (
+	"HandleExplorer/stats"
 	"HandleExplorer/utils"
 	"context"
 	"path/filepath"
@@ -22,8 +23,8 @@ import (
 //? Processes are scanned periodically and their details are cached,
 //?  just so that this data is not constantly queried from the OS.
 
-func NewProcessTable() *ProcessTable {
-	return &ProcessTable{Table: make(map[uint32]*Process)}
+func NewProcessTable(stats *stats.SessionStats) *ProcessTable {
+	return &ProcessTable{Table: make(map[uint32]*Process), RtStats: stats}
 }
 
 // Main scanner routine for tracking active processes and their details.
