@@ -1,8 +1,6 @@
 package utils
 
 import (
-	"HandleExplorer/app"
-	"HandleExplorer/handles"
 	"bufio"
 	"fmt"
 	"os"
@@ -28,7 +26,7 @@ func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
 		}
 	}
 	//* check the generic domain
-	for _, entry := range valToEnum[handles.DOMAIN_GLOBAL] {
+	for _, entry := range valToEnum[DOMAIN_GLOBAL] {
 		if mask&entry.Value != 0 {
 			//* strip flag and save it
 			mask &^= entry.Value
@@ -161,7 +159,7 @@ func PrintWithRedLabel(label string, format string, v ...any) {
 	fmt.Printf(format, v...)
 }
 
-func PrintBanner() {
+func PrintBanner(major, minor int) {
 	grey := color.New(color.FgWhite)
 
 	fmt.Println("\t   __ _____   _  _____  __   ____   ")
@@ -172,7 +170,7 @@ func PrintBanner() {
 	yellow.Printf("\t / _/ \\ \\ // _ \\/ / _ \\/ __/ -_) __/\n")
 	yellow.Printf("\t/___//_\\_\\/ .__/_/\\___/_/  \\__/_/   \n")
 	yellow.Printf("\t         /_/                        \n")
-	grey.Printf("\t\t\tv%d.%d by emryll\n\n", app.MAJOR_VERSION, app.MINOR_VERSION)
+	grey.Printf("\t\t\tv%d.%d by emryll\n\n", major, minor)
 
 	PrintDescription()
 	fmt.Println()

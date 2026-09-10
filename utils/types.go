@@ -23,6 +23,23 @@ const (
 	PARAMETER_BYTES         = 7
 )
 
+const ( //* bitmask enum domains
+	DOMAIN_GLOBAL uint8 = iota
+	DOMAIN_PROCESS
+	DOMAIN_THREAD
+	DOMAIN_EVENT
+	DOMAIN_MUTEX
+	DOMAIN_TIMER
+	DOMAIN_SEMAPHORE
+	DOMAIN_SECTION
+	DOMAIN_FILE
+	DOMAIN_PIPE
+	DOMAIN_JOB
+	DOMAIN_KEY
+	DOMAIN_TOKEN
+	DOMAIN_DESKTOP
+)
+
 type Enum struct {
 	Value Bitmask
 	// A domain is added, because the same
