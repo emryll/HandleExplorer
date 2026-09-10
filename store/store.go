@@ -11,9 +11,9 @@ const (
 	MINOR_VERSION = 1
 )
 
-var (
-	PsTable        = process.NewProcessTable()
-	AccessRegistry = &handles.ObjectAccessRegistry{}
-	RuntimeStats   = &stats.SessionStats{}
-	HandleTable    handles.HandleCache
+var ( //* Shared global lookup structures
+	RuntimeStats = &stats.SessionStats{}
+	PsTable      = process.NewProcessTable(RuntimeStats)
+
+	AccessTracker = handles.NewAccessTracker(PsTable, RuntimeStats)
 )
