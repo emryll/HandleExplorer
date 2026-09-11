@@ -31,7 +31,7 @@ func NewProcessTable(stats *stats.SessionStats) *ProcessTable {
 func ProcessScanner(wg *sync.WaitGroup, ctx context.Context, pt *ProcessTable, hr HandleRemover) {
 	defer wg.Done()
 	if err := ScanProcesses(wg, pt, hr); err != nil {
-		utils.PrintError("Failed to scan processes: %v\n", err)
+		utils.PrintError(nil, "Failed to scan processes: %v\n", err)
 	}
 
 	refresh := time.NewTicker(time.Duration(PS_REFRESH_INTERVAL) * time.Second)
@@ -42,7 +42,7 @@ func ProcessScanner(wg *sync.WaitGroup, ctx context.Context, pt *ProcessTable, h
 			return
 		case <-refresh.C:
 			if err := ScanProcesses(wg, pt, hr); err != nil {
-				utils.PrintError("Failed to scan processes: %v\n", err)
+				utils.PrintError(nil, "Failed to scan processes: %v\n", err)
 			}
 		}
 	}
@@ -171,7 +171,7 @@ func (pt *ProcessTable) ScanForDeadProcesses(processes map[uint32]*windows.Proce
 		return
 	}
 	if pt.Table == nil {
-		utils.PrintWithRedLabel("[WARNING]", "Global process table not initialized!!")
+		utils.PrintWithRedLabel(nil, "[WARNING]", "Global process table not initialized!!")
 	}
 
 	pt.RLock()
@@ -283,10 +283,12 @@ func (f ProcessFilter) Passes(ps *Process) bool {
 	}
 
 	//* Accessed objects
-	accessed := f.reg.GetObjectTypesAccessed(ps.ProcessId)
-	for objType := range f.ObjTypes {
-		if !accessed[objType] {
-			return false
+	if f.OAR != nil {
+		accessed := f.OAR.GetObjectTypesAccessed(ps.ProcessId)
+		for objType := range f.ObjTypes {
+			if !accessed[objType] {
+				return false
+			}
 		}
 	}
 	return true
@@ -342,7 +344,7 @@ func (pt *ProcessTable) FindProcesses(name string) []uint32 {
 // Get the path of a processes source exe file.
 // Looked up in the process table if it exists.
 // If it does not, the process is looked up via win32.
-func LookupProcessPath(pid uint32, pt *ProcessTable) string {
+func (pt *ProcessTable) LookupProcessPath(pid uint32) string {
 	if pt != nil {
 		if ps := pt.LookupProcess(pid); ps != nil {
 			return ps.Path

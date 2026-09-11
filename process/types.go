@@ -36,7 +36,7 @@ type ProcessFilter struct {
 	Elevated    bool // do you want to include elevated ones
 	NotElevated bool // do you want to include not-elevated ones
 	// avoid dependency cycle and ugly function prototype
-	reg *registry.ObjectAccessRegistry
+	OAR *registry.ObjectAccessRegistry
 }
 
 type ProcessTable struct {
@@ -53,6 +53,7 @@ var (
 )
 
 const ( // Digital signature check status
+	CERT_UNKNOWN        = 0
 	CERT_VALID          = 1
 	CERT_MISSING        = 2
 	CERT_HASH_MISMATCH  = 3
