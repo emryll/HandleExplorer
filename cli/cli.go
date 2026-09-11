@@ -115,7 +115,7 @@ func CliParseCommand(tokens []string) bool {
 // Main routine for parsing and executing the
 // "ps" command (search for processes / view process)
 func CliPsCommand(tokens []string) {
-	var filter *process.ProcessFilter
+	var filter = &process.ProcessFilter{}
 	if len(tokens) == 0 {
 		filter = tmenu.PsFilterSelectionMenu()
 	} else {
@@ -124,6 +124,11 @@ func CliPsCommand(tokens []string) {
 		for _, pid := range pids {
 			filter.Pids[pid] = true
 		}
+	}
+
+	// PsFilterSelectionMenu may return nil...
+	if filter == nil { // avoid nil pointer panic
+		filter = &process.ProcessFilter{}
 	}
 
 	if len(filter.Pids) == 1 {
@@ -153,6 +158,11 @@ func CliFindCommand(flags []string) {
 		filter = tmenu.ObjFilterSelectionMenu()
 	} else {
 		filter = parseFindFlags(flags)
+	}
+
+	// ObjFilterSelectionMenu may return nil...
+	if filter == nil { // avoid nil pointer panic
+		filter = &handles.HandleFilter{}
 	}
 
 	if filter.Empty() {
