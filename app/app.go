@@ -2,8 +2,9 @@ package app
 
 import (
 	"HandleExplorer/cli"
-	_ "HandleExplorer/handles"
 	ps "HandleExplorer/process"
+	"HandleExplorer/store"
+	"HandleExplorer/utils"
 	"strings"
 
 	"context"
@@ -21,14 +22,19 @@ func Run() {
 	}
 
 	wg.Add(2)
-	go ps.ProcessScanner(&wg, ctx)
-	go HandleTable.Init()
+	go ps.ProcessScanner(&wg, ctx, store.PsTable, store.AccessTracker)
+	go store.AccessTracker.HandleTable.Init()
 
-	cli.PrintBanner()
+	utils.PrintBanner(MAJOR_VERSION, MINOR_VERSION)
 	cli.CommandParsingLoop(&wg, cancel)
 
 	wg.Wait()
 }
+
+const (
+	MAJOR_VERSION = 0
+	MINOR_VERSION = 1
+)
 
 type Config struct {
 	Debug bool
