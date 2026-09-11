@@ -1,8 +1,11 @@
 package handles
 
 import (
-	_ "HandleExplorer/app"
+	"HandleExplorer/handles/registry"
+	"HandleExplorer/nt"
+	"HandleExplorer/process"
 	"HandleExplorer/profiler"
+	"HandleExplorer/stats"
 	"math"
 	"sort"
 	"sync"
@@ -26,6 +29,11 @@ type HandleCache struct {
 	// nil indicates ready-state
 	// non-nil means a refresh is in progress.
 	refreshing chan struct{}
+
+	// dependency injection to avoid import cycle
+	reg *registry.ObjectAccessRegistry
+	pst *process.ProcessTable
+	rs  *stats.SessionStats
 }
 
 //? The handle cache has waiting functionality
@@ -92,6 +100,7 @@ func (c *HandleCache) Init() {
 
 	c.SetRefresh()
 	handleTable := GetGlobalHandleTable()
+	c.rs.SetHandleCount(len(handleTable))
 
 	c.mu.Lock()
 	if c.Cache == nil {
@@ -99,7 +108,7 @@ func (c *HandleCache) Init() {
 	}
 
 	var (
-		newEntries []AccessEntry
+		newEntries []registry.AccessEntry
 		// total active handle counts are
 		// collected here, because it is
 		// hard to collect anywhere else.
@@ -112,7 +121,7 @@ func (c *HandleCache) Init() {
 			c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
 		}
 
-		objectType := GetTypeName(handle.Type)
+		objectType := nt.GetTypeName(handle.Type)
 		if c.Cache[handle.Pid][objectType] == nil {
 			c.Cache[handle.Pid][objectType] = make(map[uint32]*HandleEntry)
 		}
@@ -128,15 +137,15 @@ func (c *HandleCache) Init() {
 	}
 	c.mu.Unlock()
 
-	AccessRegistry.mu.Lock()
-	defer AccessRegistry.mu.Unlock()
+	c.reg.Lock()
+	defer c.reg.Unlock()
 	for _, entry := range newEntries {
-		AccessRegistry.addEntryRaw(entry)
+		c.reg.AddEntryRaw(entry)
 	}
 	c.TimeStamp = time.Now()
 	c.SetReady()
 
-	PsTable.UpdatePsHandleCount(psCounts)
+	c.pst.UpdatePsHandleCount(psCounts)
 }
 
 // Is handle table cache ready for use. Mutex is handled internally
@@ -164,7 +173,7 @@ func (c *HandleCache) Add(handle *HandleEntry) {
 	if c.Cache[handle.Pid] == nil {
 		c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
 	}
-	objectType := GetTypeName(handle.Type)
+	objectType := nt.GetTypeName(handle.Type)
 	if c.Cache[handle.Pid][objectType] == nil {
 		c.Cache[handle.Pid][objectType] = make(map[uint32]*HandleEntry)
 	}
@@ -184,7 +193,7 @@ func (c *HandleCache) Remove(pid uint32) {
 	delete(c.Cache, pid)
 }
 
-func (c *HandleCache) getPsHandleCountsByType(pid uint32) map[string]int {
+func (c *HandleCache) GetPsHandleCountsByType(pid uint32) map[string]int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -283,7 +292,7 @@ func (c *HandleCache) Cleanup(quota ...int) {
 		var (
 			pid        = handles[i].handle.Pid
 			handle     = handles[i].handle.Handle
-			objectType = GetTypeName(handles[i].handle.Type)
+			objectType = nt.GetTypeName(handles[i].handle.Type)
 		)
 		// between mutex it couldve been deleted
 		if _, exists := c.Cache[pid]; !exists {
@@ -319,4 +328,31 @@ func (c *HandleCache) NeedsCleanup() bool {
 		return true
 	}
 	return false
+}
+
+// lower score indicates its more important
+var ObjectTypeTier = map[uint32]int{
+	nt.OBJ_TYPE_TP_WORKER_FACTORY:       1,
+	nt.OBJ_TYPE_PROCESS:                 1,
+	nt.OBJ_TYPE_THREAD:                  1,
+	nt.OBJ_TYPE_TOKEN:                   1,
+	nt.OBJ_TYPE_SECTION:                 1,
+	nt.OBJ_TYPE_ALPC_PORT:               1,
+	nt.OBJ_TYPE_DRIVER:                  1,
+	nt.OBJ_TYPE_DESKTOP:                 2,
+	nt.OBJ_TYPE_DEBUG_OBJECT:            2,
+	nt.OBJ_TYPE_SESSION:                 2,
+	nt.OBJ_TYPE_JOB:                     3,
+	nt.OBJ_TYPE_ETW_CONSUMER:            3,
+	nt.OBJ_TYPE_ETW_REGISTRATION:        3,
+	nt.OBJ_TYPE_ETW_SESSION_DEMUX_ENTRY: 3,
+	nt.OBJ_TYPE_DIRECTORY:               3,
+	nt.OBJ_TYPE_FILE:                    3,
+	nt.OBJ_TYPE_EVENT:                   3,
+	nt.OBJ_TYPE_SEMAPHORE:               3,
+	nt.OBJ_TYPE_CALLBACK:                3,
+	nt.OBJ_TYPE_WMI_GUID:                3,
+	nt.OBJ_TYPE_TIMER:                   4,
+	nt.OBJ_TYPE_IRTIMER:                 4,
+	nt.OBJ_TYPE_SYMLINK:                 4,
 }

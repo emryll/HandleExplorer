@@ -4,6 +4,8 @@ package handles
 import "C"
 
 import (
+	"HandleExplorer/handles/registry"
+	"HandleExplorer/nt"
 	"HandleExplorer/profiler"
 	"HandleExplorer/utils"
 	"unsafe"
@@ -26,19 +28,18 @@ func GetGlobalHandleTable() []HandleEntry {
 		handleTable = append(handleTable, v.GoEntry())
 	}
 	C.free(unsafe.Pointer(cHandleEntries))
-	g_SessionStats.SetHandleCount(int(handleCount))
 	return handleTable
 }
 
-func (h HandleEntry) ConvertToAccessEntry() AccessEntry {
-	var entry AccessEntry
+func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
+	var entry registry.AccessEntry
 	entry.Object = h.Type
 	entry.Handle = h.Handle
 	entry.Pid = h.Pid
 	entry.Params = h.Parameters
-	entry.Access = h.Access
+	entry.Access = (utils.Bitmask)(h.Access)
 
-	if entry.Object == OBJ_TYPE_PROCESS {
+	if entry.Object == nt.OBJ_TYPE_PROCESS {
 		pathParam := h.GetParameter("ImagePath")
 		if !pathParam.Empty() {
 			entry.Name = h.Parameters["ImagePath"].GetValue().(string)
