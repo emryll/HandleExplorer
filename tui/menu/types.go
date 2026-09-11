@@ -1,10 +1,15 @@
 package tmenu
 
-import "github.com/charmbracelet/bubbles/textinput"
+import (
+	"HandleExplorer/handles"
+	"HandleExplorer/process"
+
+	"github.com/charmbracelet/bubbles/textinput"
+)
 
 //*====================[ Object Type Picker ]=======================
 
-//? This is a shared component for picking object types
+// ? This is a shared component for picking object types
 type objectTypePicker struct {
 	objectTypes []string
 
@@ -22,13 +27,6 @@ type objectTypePicker struct {
 }
 
 //*=====================[ Object Search Filter ]=======================
-
-type HandleFilter struct {
-	ObjectTypes []string
-	ObjectName  string
-	Process     string
-	AccessLevel string
-}
 
 type objectFocusField int
 
@@ -56,7 +54,7 @@ type objectFilterModel struct {
 	quitting  bool
 	submitted bool
 
-	result *HandleFilter
+	result *handles.HandleFilter
 }
 
 // Shared layout constants
@@ -68,15 +66,6 @@ const (
 )
 
 //*=====================[ Process Search Filter ]=======================
-
-type ProcessFilter struct {
-	Path               string
-	DirectoryAllowlist []string
-	ParentProcess      []string
-	SignatureStatus    []string
-	Elevation          []string
-	ObjectTypes        []string
-}
 
 type processModel struct {
 	focus processFocusField
@@ -107,7 +96,7 @@ type processModel struct {
 
 	submitted bool
 	quitting  bool
-	result    *ProcessFilter
+	result    *process.ProcessFilter
 }
 
 type processFocusField int

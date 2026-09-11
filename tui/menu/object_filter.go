@@ -1,10 +1,12 @@
 package tmenu
 
 import (
-	ps "HandleExplorer/process"
 	"HandleExplorer/handles"
-	"strings"
+	"HandleExplorer/nt"
+	"HandleExplorer/store"
+	"HandleExplorer/utils"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,7 +22,7 @@ func ObjFilterSelectionMenu() *handles.HandleFilter {
 	)
 	finalModel, err := menu.Run()
 	if err != nil {
-		PrintError(nil, "Failed to launch filter selection menu: %v\n", err)
+		utils.PrintError(nil, "Failed to launch filter selection menu: %v\n", err)
 		return nil
 	}
 	m := finalModel.(*objectFilterModel)
@@ -265,20 +267,20 @@ func (m *objectFilterModel) recalcInputs() {
 }
 
 func (m *objectFilterModel) buildFilter() *handles.HandleFilter {
-	var filter handles.HandleFilter{
-		Access: parseAccessField(m.accessLevel.Value())
-		ObjName: append([]string(nil), m.objectName.Value())
+	filter := handles.HandleFilter{
+		Access: parseAccessField(m.accessLevel.Value()),
+		Names:  append([]string(nil), m.objectName.Value()),
 	}
 
 	for _, typeName := range m.types.values() {
-		typeId := handles.GetTypeIdentifier(typeName)
+		typeId := nt.GetTypeIdentifier(typeName)
 		filter.ObjType = append(filter.ObjType, typeId)
 	}
 
-	pid, err := strconv.Atoi(m.process.Value()); err == nil {
-		filter.Pids = append(filter.Pids, pid)
+	if pid, err := strconv.Atoi(m.process.Value()); err == nil {
+		filter.Pids = append(filter.Pids, uint32(pid))
 	} else {
-		pids := ps.FindProcesses(m.process.Value())
+		pids := store.PsTable.FindProcesses(m.process.Value())
 		filter.Pids = append(filter.Pids, pids...)
 	}
 

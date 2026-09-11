@@ -1,9 +1,10 @@
 package tmenu
 
 import (
-	"HandleExplorer/utils"
-	"HandleExplorer/handles"
+	"HandleExplorer/nt"
 	ps "HandleExplorer/process"
+	"HandleExplorer/store"
+	"HandleExplorer/utils"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,7 @@ func PsFilterSelectionMenu() *ps.ProcessFilter {
 
 	finalModel, err := menu.Run()
 	if err != nil {
-		PrintError(nil, "Failed to launch process filter selection menu: %v\n", err)
+		utils.PrintError(nil, "Failed to launch process filter selection menu: %v\n", err)
 		return nil
 	}
 
@@ -1111,13 +1112,14 @@ func (m *processModel) updateObjectTypes(msg *tea.KeyMsg) {
 }
 
 func (m *processModel) buildFilter() *ps.ProcessFilter {
-	var filter ps.ProcessFilter{
+	filter := ps.ProcessFilter{
 		Path: utils.NormalizePath(m.path.Value()),
 
-		Pids: make(map[string]bool)
-		Parent: make(map[string]bool)
-		ObjTypes: make(map[uint32]bool)
-		SigStatus: make(map[int]bool)
+		Pids:      make(map[uint32]bool),
+		Parent:    make(map[string]bool),
+		ObjTypes:  make(map[uint32]bool),
+		SigStatus: make(map[int]bool),
+		OAR:       store.AccessTracker.AccessRegistry,
 	}
 
 	//* directory
@@ -1133,7 +1135,7 @@ func (m *processModel) buildFilter() *ps.ProcessFilter {
 	//* accessed object types
 	for i, typeName := range m.objectTypes {
 		if m.selectedTypes[i] {
-			typeId := handles.GetTypeIdentifier(typeName)
+			typeId := nt.GetTypeIdentifier(typeName)
 			filter.ObjTypes[typeId] = true
 		}
 	}
