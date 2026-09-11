@@ -3,6 +3,7 @@ package utils
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +93,7 @@ func NormalizePath(path string) string {
 				if ok {
 					b.WriteString(env)
 				} else {
-					PrintError("Unknown environment variable: %s\n", clean[start+1:i])
+					PrintError(nil, "Unknown environment variable: %s\n", clean[start+1:i])
 				}
 			} else {
 				start = i
@@ -104,12 +105,12 @@ func NormalizePath(path string) string {
 	}
 
 	if inside {
-		PrintError("Invalid use of environment variables, broken path: %v\n", path)
+		PrintError(nil, "Invalid use of environment variables, broken path: %v\n", path)
 	}
 	return b.String()
 }
 
-func isEmptyName(name string) bool {
+func IsEmptyName(name string) bool {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "." {
 		return true
@@ -150,13 +151,13 @@ var (
 	grey   = color.New(color.FgWhite)
 )
 
-func PrintError(format string, v ...any) {
-	PrintWithRedLabel("[*]", format, v...)
+func PrintError(w io.Writer, format string, v ...any) {
+	PrintWithRedLabel(w, "[*]", format, v...)
 }
 
-func PrintWithRedLabel(label string, format string, v ...any) {
-	red.Printf("%s ", label)
-	fmt.Printf(format, v...)
+func PrintWithRedLabel(w io.Writer, label string, format string, v ...any) {
+	red.Fprintf(w, "%s ", label)
+	fmt.Fprintf(w, format, v...)
 }
 
 func PrintBanner(major, minor int) {
