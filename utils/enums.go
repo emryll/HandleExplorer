@@ -67,6 +67,13 @@ const (
 	SECTION_QUERY       = 0x1
 )
 
+func GetEnumValue(s string) Bitmask {
+	if enum, exists := enumToVal[s]; exists {
+		return enum.Value
+	}
+	return 0
+}
+
 // dictionary to allow for using string enums for bitflags
 var enumToVal = map[string]Enum{
 	"DELETE":       Enum{Domain: DOMAIN_GLOBAL, Value: windows.DELETE},

@@ -1,13 +1,12 @@
 package tmenu
 
 import (
-	"fmt"
-	"io"
+	"HandleExplorer/utils"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fatih/color"
 )
 
 //*=======================[ Styles ]======================
@@ -200,9 +199,31 @@ func placeForm(width int, height int, form string) string {
 	)
 }
 
-var red = color.New(color.FgHiRed, color.Bold)
+// Take in raw string access mask input,
+// normalize the string into a mask value.
+func parseAccessField(strMask string) utils.Bitmask {
+	// If it starts with 0x its surely a raw hex value
+	if strings.HasPrefix(strMask, "0x") {
+		if val, err := strconv.ParseUint(strMask[2:], 16, 64); err == nil {
+			return (utils.Bitmask)(val)
+		} else {
+			return 0
+		}
+	}
 
-func PrintError(w io.Writer, format string, a ...any) {
-	red.Fprintf(w, "[*] ")
-	fmt.Fprintf(w, format, a...)
+	// Check if its a raw decimal value
+	if val, err := strconv.ParseUint(strMask, 10, 64); err == nil {
+		return (utils.Bitmask)(val)
+	}
+	// Check if its a raw hex value (without the 0x)
+	if val, err := strconv.ParseUint(strMask, 16, 64); err == nil {
+		return (utils.Bitmask)(val)
+	}
+
+	var mask utils.Bitmask
+	for _, flag := range strings.Split(strMask, "|") {
+		flag = strings.TrimSpace(flag)
+		mask |= utils.GetEnumValue(flag)
+	}
+	return mask
 }
