@@ -74,7 +74,7 @@ func ParseAccessString(accessList string) Bitmask {
 // with a maximum width. Flag names are always shown in full,
 // or not at all. No "..." truncation, since flags lose meaning.
 // The result is "flag1 | flag2 + n flags", with as many flags as fit.
-// The displayed flag order is determined by GetFlagPriority() score.
+// The displayed flag order is determined by GetFlagPriority() scores.
 func DisplayBitflags(mask Bitmask, domain uint8, width int) string {
 	flags := InterpretBitmaskValue(mask, domain, true).([]string)
 	sort.Slice(flags, func(i, j int) bool {
@@ -122,10 +122,12 @@ func DisplayBitflags(mask Bitmask, domain uint8, width int) string {
 		}
 	}
 
-	if len(added) > 0 {
-		result += " + "
+	if len(flags)-len(added) > 0 {
+		if len(added) > 0 {
+			result += " + "
+		}
+		result += fmt.Sprintf("%d flags", len(flags)-len(added))
 	}
-	result += fmt.Sprintf("%d flags", len(flags)-len(added))
 	return result
 }
 
