@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/fatih/color"
@@ -55,10 +56,13 @@ func InterpretBitmaskValue(mask Bitmask, domain uint8, array ...bool) any {
 	return flags
 }
 
+// Convert an access mask from a human readable
+// string-based declaration to an actual bitmask value.
 func ParseAccessString(accessList string) Bitmask {
 	var mask Bitmask
 	flags := strings.Split(accessList, "|")
 	for _, flag := range flags {
+		flag = strings.TrimSpace(flag)
 		if enum, exists := enumToVal[flag]; exists {
 			mask |= enum.Value
 		}
@@ -66,7 +70,115 @@ func ParseAccessString(accessList string) Bitmask {
 	return mask
 }
 
-//TODO: value to flags with width constraint
+// Display a bitmask value in human readable format,
+// with a maximum width. Flag names are always shown in full,
+// or not at all. No "..." truncation, since flags lose meaning.
+// The result is "flag1 | flag2 + n flags", with as many flags as fit.
+// The displayed flag order is determined by GetFlagPriority() score.
+func DisplayBitflags(mask Bitmask, domain uint8, width int) string {
+	flags := InterpretBitmaskValue(mask, domain, true).([]string)
+	sort.Slice(flags, func(i, j int) bool {
+		return GetFlagPriority(flags[i], domain) > GetFlagPriority(flags[j], domain)
+	})
+
+	var (
+		result string
+		added  = make(map[string]bool)
+	)
+
+	for {
+		var flagAdded bool
+		for _, flag := range flags {
+			if added[flag] {
+				continue
+			}
+
+			//* Does this flag fit?
+			totalLen := len(result) + len(flag)
+			remainingFlags := len(flags) - len(added) - 1
+			if remainingFlags > 0 {
+				totalLen += len(fmt.Sprintf(" + %d flags", remainingFlags))
+			}
+			if len(added) > 0 {
+				totalLen += 3 // for " | "
+			}
+
+			if totalLen > width {
+				continue
+			}
+
+			//* Flag fits so add it
+			if len(added) > 0 {
+				result += " | "
+			}
+			result += flag
+			flagAdded = true
+			added[flag] = true
+			break
+		}
+		// there is no flag that fits anymore
+		if !flagAdded {
+			break
+		}
+	}
+
+	if len(added) > 0 {
+		result += " + "
+	}
+	result += fmt.Sprintf("%d flags", len(flags)-len(added))
+	return result
+}
+
+func GetFlagPriority(flag string, domain uint8) int {
+	switch domain {
+	case DOMAIN_PROCESS:
+		switch flag {
+		case "PROCESS_ALL_ACCESS":
+			return 100
+		case "PROCESS_CREATE_THREAD":
+			return 95
+		case "PROCESS_SET_INFORMATION":
+			return 90
+		case "PROCESS_CREATE_PROCESS":
+			return 85
+		case "PROCESS_SUSPEND_RESUME":
+			return 80
+		case "PROCESS_TERMINATE":
+			return 75
+		case "PROCESS_DUP_HANDLE":
+			return 70
+		case "PROCESS_VM_WRITE":
+			return 50
+		case "PROCESS_VM_READ":
+			return 30
+		case "PROCESS_VM_OPERATION":
+			return 5
+		case "PROCESS_QUERY_LIMITED_INFORMATION":
+			return 1
+		}
+	case DOMAIN_THREAD:
+		switch flag {
+		case "THREAD_ALL_ACCESS":
+		case "THREAD_SET_CONTEXT":
+		case "THREAD_IMPERSONATE":
+		case "THREAD_DIRECT_IMPERSONATION":
+		case "THREAD_SET_INFORMATION":
+		case "THREAD_SET_THREAD_TOKEN":
+		case "THREAD_SUSPEND_RESUME":
+		case "THREAD_TERMINATE":
+		case "THREAD_QUERY_INFORMATION":
+		}
+	case DOMAIN_FILE:
+	case DOMAIN_KEY:
+	case DOMAIN_SECTION:
+	case DOMAIN_TOKEN:
+	case DOMAIN_JOB:
+	case DOMAIN_DESKTOP:
+	case DOMAIN_TIMER:
+	}
+
+	return 0
+}
 
 //*========================[ String helpers ]===========================
 
@@ -178,9 +290,9 @@ func PrintBanner(major, minor int) {
 }
 
 func PrintDescription() {
-	fmt.Println("\tThis is a commandline-tool for searching")
-	fmt.Println("\t& analyzing object access through handles.\n")
-	fmt.Println("\tTo view available commands, run \"help\"")
+	fmt.Print("\tThis is a commandline-tool for searching\n")
+	fmt.Print("\t& analyzing object access through handles.\n\n")
+	fmt.Print("\tTo view available commands, run \"help\"\n")
 }
 
 //*=======================[ Generic utils ]==========================
