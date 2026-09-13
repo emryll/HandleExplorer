@@ -121,7 +121,7 @@ func (p Parameter) GetValue() any {
 	case PARAMETER_UINT64_ARRAY:
 		return GetUint64ArrayFromBuffer(p.Buffer)
 	case PARAMETER_POINTER:
-		return fmt.Sprintf("%p", binary.LittleEndian.Uint64(p.Buffer))
+		return fmt.Sprintf("0x%x", binary.LittleEndian.Uint64(p.Buffer))
 	case PARAMETER_POINTER_ARRAY:
 		return GetPointerArrayFromBuffer(p.Buffer)
 	case PARAMETER_BYTES:
