@@ -131,57 +131,6 @@ func DisplayBitflags(mask Bitmask, domain uint8, width int) string {
 	return result
 }
 
-func GetFlagPriority(flag string, domain uint8) int {
-	switch domain {
-	case DOMAIN_PROCESS:
-		switch flag {
-		case "PROCESS_ALL_ACCESS":
-			return 100
-		case "PROCESS_CREATE_THREAD":
-			return 95
-		case "PROCESS_SET_INFORMATION":
-			return 90
-		case "PROCESS_CREATE_PROCESS":
-			return 85
-		case "PROCESS_SUSPEND_RESUME":
-			return 80
-		case "PROCESS_TERMINATE":
-			return 75
-		case "PROCESS_DUP_HANDLE":
-			return 70
-		case "PROCESS_VM_WRITE":
-			return 50
-		case "PROCESS_VM_READ":
-			return 30
-		case "PROCESS_VM_OPERATION":
-			return 5
-		case "PROCESS_QUERY_LIMITED_INFORMATION":
-			return 1
-		}
-	case DOMAIN_THREAD:
-		switch flag {
-		case "THREAD_ALL_ACCESS":
-		case "THREAD_SET_CONTEXT":
-		case "THREAD_IMPERSONATE":
-		case "THREAD_DIRECT_IMPERSONATION":
-		case "THREAD_SET_INFORMATION":
-		case "THREAD_SET_THREAD_TOKEN":
-		case "THREAD_SUSPEND_RESUME":
-		case "THREAD_TERMINATE":
-		case "THREAD_QUERY_INFORMATION":
-		}
-	case DOMAIN_FILE:
-	case DOMAIN_KEY:
-	case DOMAIN_SECTION:
-	case DOMAIN_TOKEN:
-	case DOMAIN_JOB:
-	case DOMAIN_DESKTOP:
-	case DOMAIN_TIMER:
-	}
-
-	return 0
-}
-
 //*========================[ String helpers ]===========================
 
 // Expand all environment variables %env%/file
@@ -248,10 +197,26 @@ func OrAnon(s string) string {
 	return s
 }
 
+// Print the string, or "(anonymous)" if empty
+func OrAnon2(s string) string {
+	if s == "" {
+		return "(anonymous)"
+	}
+	return s
+}
+
 // Print the string, or "unknown" if empty
 func OrUnknown(s string) string {
 	if s == "" {
 		return "unknown"
+	}
+	return s
+}
+
+// Print the string, or "unknown" if empty
+func OrUnknown2(s string) string {
+	if s == "" {
+		return "(unknown)"
 	}
 	return s
 }
