@@ -186,11 +186,13 @@ func (e *AccessEntry) Fields() []string {
 		accessingPs = fmt.Sprintf("PID %d (%s)", e.Pid)
 	}*/ //TODO
 	accessingPs = fmt.Sprintf("PID %d", e.Pid)
+	domain := nt.GetDomainFromObject(e.Object)
+	width := 35
 	return []string{
 		nt.GetTypeName(e.Object),
-		utils.OrDash(e.Name),
+		utils.OrAnon(e.Name),
 		accessingPs,
-		fmt.Sprintf("%v", e.GetAccessAsString()),
+		fmt.Sprintf("%v", utils.DisplayBitflags(e.Access, domain, width)),
 	}
 }
 
