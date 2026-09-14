@@ -211,6 +211,9 @@ func (pt *ProcessTable) Search(filter ProcessFilter) []*Process {
 	}
 	//* regular lookup
 	for _, ps := range pt.Table {
+		/*if ps.Path != filepath.Base(ps.Path) {
+			fmt.Printf("[dbg] process with dir: %s\n", ps.Path)
+		}*/
 		if filter.Passes(ps) {
 			results = append(results, ps)
 		}
@@ -219,13 +222,17 @@ func (pt *ProcessTable) Search(filter ProcessFilter) []*Process {
 }
 
 func (f ProcessFilter) Passes(ps *Process) bool {
+	if ps == nil {
+		return false
+	}
+
 	//* Process Id
 	if len(f.Pids) > 0 && !f.Pids[ps.ProcessId] {
 		return false
 	}
 
 	//* Path / Name
-	if f.Path != "" && ps.Path != f.Path &&
+	if !utils.IsEmptyName(f.Path) && ps.Path != f.Path &&
 		f.Path != filepath.Base(ps.Path) &&
 		filepath.Base(f.Path) != ps.Path {
 		return false
@@ -234,13 +241,16 @@ func (f ProcessFilter) Passes(ps *Process) bool {
 	//* Directory
 	// does not qualify if it has no dir listed
 	// while the directory filter has been set
-	if f.Path == filepath.Base(f.Path) && len(f.DirFilter) > 0 {
+	if ps.Path == filepath.Base(ps.Path) && len(f.DirFilter) > 0 {
 		return false
 	}
 
 	var dirFound bool
 	for _, dir := range f.DirFilter {
-		if strings.HasPrefix(f.Path, dir) { // allow subdirs
+		dir = strings.ToLower(dir)
+		psPath := strings.ToLower(ps.Path)
+
+		if strings.HasPrefix(psPath, dir) { // allow subdirs
 			dirFound = true
 			break
 		}
