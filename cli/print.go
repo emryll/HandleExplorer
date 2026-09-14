@@ -55,7 +55,8 @@ func PrintProcess(w io.Writer, ps *process.Process) {
 		grey   = color.New(color.FgWhite)
 	)
 
-	yellow.Fprintf(w, "\nprocess id %d\n", ps.ProcessId)
+	grey.Fprintf(w, "\nprocess id ")
+	yellow.Fprintf(w, "%d\n", ps.ProcessId)
 	yellow.Fprintf(w, "path: ")
 	fmt.Fprintf(w, "%s\n", ps.Path)
 
@@ -94,7 +95,9 @@ func PrintProcess(w io.Writer, ps *process.Process) {
 
 	//* overlapping
 	overlapping, clusters := store.AccessTracker.AccessRegistry.FindOverlappingWithPs(ps.ProcessId)
-	fmt.Fprintf(w, "\nprocess %d is a part of ", ps.ProcessId)
+	fmt.Fprintf(w, "\nprocess ")
+	yellow.Fprintf(w, "%d", ps.ProcessId)
+	fmt.Fprintf(w, " is a part of ")
 	yellow.Fprintf(w, "%d", len(clusters))
 	fmt.Fprintln(w, " clusters")
 
@@ -121,21 +124,24 @@ func PrintProcess(w io.Writer, ps *process.Process) {
 			break
 		}
 		p := store.PsTable.LookupProcess(entries[i].pid)
-		fmt.Fprintf(w, "\t- ")
+		fmt.Fprintf(w, "\t")
 		if entries[i].count > 1 {
-			fmt.Fprintf(w, "[x%d] ", entries[i].count)
+			grey.Fprintf(w, "[x%d] ", entries[i].count)
 		}
-		fmt.Fprintf(w, "PID %d", entries[i].pid)
+		fmt.Fprintf(w, "PID ")
+		yellow.Fprintf(w, "%d", entries[i].pid)
 
 		if p != nil && p.Path != "" {
-			fmt.Fprintf(w, " (%s)", filepath.Base(p.Path))
+			grey.Fprintf(w, " (%s)", filepath.Base(p.Path))
 		} else {
-			fmt.Fprintf(w, "(unknown)")
+			grey.Fprintf(w, "(unknown)")
 		}
 		fmt.Fprintln(w)
 	}
 	if len(overlapping) > 5 {
-		fmt.Fprintf(w, "\t(and %d others)\n", len(overlapping)-5)
+		grey.Fprintf(w, "\t(and ")
+		yellow.Fprintf(w, "%d", len(overlapping)-5)
+		grey.Fprintf(w, " others)\n")
 	}
 	fmt.Fprintln(w)
 
@@ -168,7 +174,7 @@ func PrintObject(w io.Writer, objType uint32, name string) {
 
 	if name == "" {
 		fmt.Fprintln(w, "Anonymous objects can't be tracked in the current version. :-/")
-		fmt.Fprintln(w, "Sorry about that... Better object tracking will be added in the future.")
+		fmt.Fprintln(w, "Sorry about that... Better object tracking will be added in the next version.")
 		return
 	}
 
@@ -197,12 +203,18 @@ func PrintAccessEntry(w io.Writer, e *registry.AccessEntry) {
 		w = os.Stdout
 	}
 
+	var (
+		yellow = color.New(color.FgHiYellow)
+		grey   = color.New(color.FgWhite)
+	)
+
 	path := store.PsTable.LookupProcessPath(e.Pid)
-	fmt.Fprintf(w, "* Access by process %d (%s)\n",
-		e.Pid, utils.OrDash(filepath.Base(path)))
-	fmt.Fprintf(w, "\tObject type: %s\n", nt.GetTypeName(e.Object))
-	fmt.Fprintf(w, "\tObject name: %s\n", utils.OrAnon(e.Name))
-	fmt.Fprintf(w, "\tAccess level: %v\n", e.GetAccessAsString())
+	fmt.Fprintf(w, "\naccess by process ")
+	yellow.Fprintf(w, "%d", e.Pid)
+	grey.Fprintf(w, " (%s)\n", utils.OrUnknown(filepath.Base(path)))
+
+	fmt.Fprintf(w, "access level: ")
+	yellow.Fprintf(w, "%v\n", e.GetAccessAsString())
 
 	fmt.Fprintln(w)
 	PrintObject(w, e.Object, e.Name)
@@ -214,9 +226,15 @@ func PrintHandleEntry(w io.Writer, h *handles.HandleEntry) {
 		w = os.Stdout
 	}
 
+	var (
+		yellow = color.New(color.FgHiYellow)
+		grey   = color.New(color.FgWhite)
+	)
+
 	path := store.PsTable.LookupProcessPath(h.Pid)
-	fmt.Fprintf(w, "* Access by process %d (%s)\n",
-		h.Pid, utils.OrUnknown(filepath.Base(path)))
+	fmt.Fprintf(w, "\naccess by process ")
+	yellow.Fprintf(w, "%d", h.Pid)
+	grey.Fprintf(w, " (%s)\n", utils.OrUnknown(filepath.Base(path)))
 	fmt.Fprintf(w, "\tObject type: %s\n", nt.GetTypeName(h.Type))
 	nameParam := h.GetParameter("Name")
 	var name string
@@ -234,7 +252,10 @@ func PrintCluster(w io.Writer, c *registry.Cluster) {
 		w = os.Stdout
 	}
 
-	fmt.Printf("cluster size: %d\n", len(c.Members))
+	yellow := color.New(color.FgHiYellow)
+
+	fmt.Fprintf(w, "\ncluster size: ")
+	yellow.Fprintf(w, "%d\n", len(c.Members))
 
 	frequencyTable := make(map[string]int)
 	for _, pid := range c.Members {
@@ -424,7 +445,7 @@ type dataEntry struct {
 	value int
 }
 
-const DEFAULT_DIAGRAM_WIDTH = 70
+const DEFAULT_DIAGRAM_WIDTH = 80
 
 // TODO: truncate too long names with "..." cut-off
 // Print a histogram visualizing distribution of data.
