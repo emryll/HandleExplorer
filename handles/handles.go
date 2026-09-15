@@ -8,6 +8,8 @@ import (
 	"HandleExplorer/nt"
 	"HandleExplorer/profiler"
 	"HandleExplorer/utils"
+	"fmt"
+	"path/filepath"
 	"unsafe"
 )
 
@@ -39,13 +41,29 @@ func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
 	entry.Params = h.Parameters
 	entry.Access = (utils.Bitmask)(h.Access)
 
-	if entry.Object == nt.OBJ_TYPE_PROCESS {
+	switch entry.Object {
+	case nt.OBJ_TYPE_PROCESS:
 		pathParam := h.GetParameter("ImagePath")
 		if !pathParam.Empty() {
 			entry.Name = h.Parameters["ImagePath"].GetValue().(string)
 			entry.Params["ImagePath"] = pathParam
 		}
-	} else {
+	case nt.OBJ_TYPE_THREAD:
+		var name string
+		tidParam := h.GetParameter("Tid")
+		if !tidParam.Empty() {
+			name = fmt.Sprintf("TID %v", h.Parameters["Tid"].GetValue())
+		}
+
+		if pathParam := h.GetParameter("Path"); !pathParam.Empty() {
+			processPath := fmt.Sprintf("%v", h.Parameters["Path"].GetValue())
+			if !utils.IsEmptyName(processPath) {
+				name += fmt.Sprintf(" (%s)", filepath.Base(processPath))
+			}
+		}
+
+		entry.Name = name
+	default:
 		nameParam := h.GetParameter("Name")
 		if !nameParam.Empty() {
 			entry.Name = utils.GetAnsiValue(nameParam.Buffer)
