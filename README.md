@@ -1,7 +1,7 @@
 # HandleExplorer
 Interactive command-line tool for capturing, searching and analyzing handle data.
 
-https://github.com/user-attachments/assets/e7f95706-1492-477b-9a27-8c0f697f750c
+https://github.com/user-attachments/assets/f405c4cd-e00a-4a25-95c5-0b2fcc7a9c91
 
 ## Features
 - Search for processes with filters
