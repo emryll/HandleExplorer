@@ -123,13 +123,29 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             DWORD pid = GetProcessIdOfThread(hObject);
             size_t pidParamSize;
             BYTE* pidParam = BuildParameter(&pidParamSize, PARAMETER_UINT32, "Pid", pid);
-        
-            parameters = (BYTE*)malloc(tidParamSize + pidParamSize);
+        // owning process path
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            char path[1026];
+            DWORD pathLen = 1026;
+            size_t pathParamSize = 0;
+            BYTE* pathParam = NULL;
+            if (hProcess != NULL) {
+                BOOL ok = QueryFullProcessImageNameA(hProcess, 0, path, &pathLen);
+                if (ok) {
+                    pathParam = BuildParameter(&pathParamSize, PARAMETER_ANSISTRING, "Path", path);
+                }
+            }
+
+            parameters = (BYTE*)malloc(tidParamSize + pidParamSize + pathParamSize);
             memcpy(parameters, tidParam, tidParamSize);
-            memcpy(parameters + pidParamSize, pidParam, pidParamSize);
+            memcpy(parameters + tidParamSize, pidParam, pidParamSize);
+            if (pathParamSize > 0) {
+                memcpy(parameters + tidParamSize + pidParamSize, pathParam, pathParamSize);
+                free(pathParam);
+            }
             free(tidParam);
             free(pidParam);
-            *paramsSize = pidParamSize + tidParamSize;
+            *paramsSize = pidParamSize + tidParamSize + pathParamSize;
             break;
         }
         case OBJ_TYPE_FILE: {
