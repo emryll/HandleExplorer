@@ -4,9 +4,11 @@ import (
 	"HandleExplorer/handles"
 	"HandleExplorer/handles/registry"
 	"HandleExplorer/nt"
+	"HandleExplorer/process"
 	"HandleExplorer/store"
 	"HandleExplorer/utils"
 	"flag"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -78,4 +80,62 @@ func parseClustersFlags(flags []string) registry.ClusterFilter {
 	cf.Parse(flags)
 	filter.ObjType = nt.GetTypeIdentifier(objTypeName)
 	return filter
+}
+
+func printProcessFilter(filter *process.ProcessFilter) {
+	fmt.Printf("[dbg] Process search filter:\n\t* Path: %s\n", filter.Path)
+
+	fmt.Printf("\t* Dir: ")
+	for _, dir := range filter.DirFilter {
+		fmt.Printf("\n\t\t+ %s", dir)
+	}
+	fmt.Println()
+
+	fmt.Printf("\t* Pids: ")
+	if len(filter.Pids) > 0 {
+		for pid := range filter.Pids {
+			fmt.Printf("%d ", pid)
+		}
+	}
+	fmt.Println()
+
+	fmt.Printf("\t* ObjTypes: ")
+	if len(filter.ObjTypes) > 0 {
+		for typeId := range filter.ObjTypes {
+			fmt.Printf("\n\t\t+ %s", nt.GetTypeName(typeId))
+		}
+	}
+	fmt.Println()
+
+	fmt.Printf("\t* Parent: ")
+	if len(filter.Parent) > 0 {
+		for parent := range filter.Parent {
+			fmt.Printf("\n\t\t+ %s", parent)
+		}
+	}
+	fmt.Println()
+
+	fmt.Printf("\t* Signature: ")
+	if len(filter.SigStatus) > 0 {
+		for status := range filter.SigStatus {
+			fmt.Printf("\n\t\t+ %s", process.GetSigStatusAsString(status))
+		}
+	}
+	fmt.Println()
+
+	fmt.Printf("\t* Elevated: ")
+	if filter.Elevated {
+		fmt.Printf("true\n")
+	} else {
+		fmt.Printf("false\n")
+	}
+
+	fmt.Printf("\t* Not Elevated: ")
+	if filter.NotElevated {
+		fmt.Printf("true\n")
+	} else {
+		fmt.Printf("false\n")
+	}
+
+	fmt.Println()
 }
