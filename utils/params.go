@@ -61,6 +61,9 @@ func ParseSingleParameter(header string, data []byte) (Parameter, error) {
 		if err != nil {
 			return Parameter{}, fmt.Errorf("failed to read size into integer: %v (%s)", err, header)
 		}
+		if size < 0 || len(data) < size {
+			return Parameter{}, fmt.Errorf("declared array size %d exceeds available data (%dB) (%s)", size, len(data), header)
+		}
 		// add array defined bytes into the parameter buffer
 		param.Buffer = append([]byte(nil), data[:size]...)
 		isArray = true
@@ -78,10 +81,19 @@ func ParseSingleParameter(header string, data []byte) (Parameter, error) {
 		switch int(param.Type) {
 		case PARAMETER_ANSISTRING:
 			str := GetAnsiValue(data)
+			if len(data) < len(str)+1 {
+				return Parameter{}, fmt.Errorf("ansi string needs %d bytes, only %d available (%s)", len(str)+1, len(data), header)
+			}
 			param.Buffer = append([]byte(nil), data[:len(str)+1]...)
 		case PARAMETER_BOOLEAN, PARAMETER_UINT32:
+			if len(data) < 4 {
+				return Parameter{}, fmt.Errorf("expected 4 bytes for uint64, only %d available (%s)", len(data), header)
+			}
 			param.Buffer = append([]byte(nil), data[:4]...)
 		case PARAMETER_UINT64, PARAMETER_POINTER:
+			if len(data) < 8 {
+				return Parameter{}, fmt.Errorf("expected 8 bytes for uint64, only %d available (%s)", len(data), header)
+			}
 			param.Buffer = append([]byte(nil), data[:8]...)
 		}
 	}
