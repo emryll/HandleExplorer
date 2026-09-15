@@ -4,6 +4,8 @@ Interactive command-line tool for capturing, searching and analyzing handle data
 https://github.com/user-attachments/assets/f405c4cd-e00a-4a25-95c5-0b2fcc7a9c91
 
 ## Features
+> New features and upgraded UI coming very soon...
+
 - Search for processes with filters
 - View objects accessed by a process
 - Search for handles by describing object access
