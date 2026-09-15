@@ -169,7 +169,14 @@ func (e *AccessEntry) GetAccessFlagsAsString() []string {
 
 //*===================[ ListItem (UI) interface methods ]===================
 
-func (e *AccessEntry) Columns() []tlist.Column {
+type AccessEntryView struct {
+	Entry       *AccessEntry
+	ProcessPath string
+	ParentPath  string
+	ParentPid   uint32
+}
+
+func (e *AccessEntryView) Columns() []tlist.Column {
 	return []tlist.Column{
 		{Title: "Type", Highlight: true},
 		{Title: "Name"},
@@ -178,44 +185,51 @@ func (e *AccessEntry) Columns() []tlist.Column {
 	}
 }
 
-func (e *AccessEntry) Fields() []string {
-	var accessingPs string
-	/*if e.PsPath == "" {
-		accessingPs = fmt.Sprintf("PID %d", e.Pid)
-	} else {
-		accessingPs = fmt.Sprintf("PID %d (%s)", e.Pid)
-	}*/ //TODO
-	accessingPs = fmt.Sprintf("PID %d", e.Pid)
-	domain := nt.GetDomainFromObject(e.Object)
+func (e *AccessEntryView) Fields() []string {
+	if e.Entry == nil {
+		return nil
+	}
+
+	accessingPs := fmt.Sprintf("PID %d (%s)",
+		e.Entry.Pid, utils.OrUnknown(filepath.Base(e.ProcessPath)))
+	domain := nt.GetDomainFromObject(e.Entry.Object)
 	width := 35
 	return []string{
-		nt.GetTypeName(e.Object),
-		utils.OrAnon(e.Name),
+		nt.GetTypeName(e.Entry.Object),
+		utils.OrAnon2(e.Entry.Name),
 		accessingPs,
-		fmt.Sprintf("%v", utils.DisplayBitflags(e.Access, domain, width)),
+		fmt.Sprintf("%v", utils.DisplayBitflags(e.Entry.Access, domain, width)),
 	}
 }
 
 /*
-func (e AccessEntry) RightStages() []string {
-}*/
-
-func (e *AccessEntry) Key() string {
-	return fmt.Sprintf("%d:%d:%s:%X", e.Pid, e.Object, e.Name, e.Access)
+	func (e *AccessEntryView) RightStages() []string {
+		if e.Entry == nil {
+			return nil
+		}
+		return []string{
+			fmt.Sprintf("PID %d (%s)", e.Entry.Pid, e.ProcessPath),
+			fmt.Sprintf("PID %d", e.Entry.Pid),
+		}
+	}
+*/
+func (e *AccessEntryView) Key() string {
+	return fmt.Sprintf("%d:%d:%s:%X",
+		e.Entry.Pid, e.Entry.Object, e.Entry.Name, e.Entry.Access)
 }
 
 // Used for polymorphic list (newPickerModel)
-func (e *AccessEntry) Title() string {
+func (e *AccessEntryView) Title() string {
 	return "Handle"
 }
 
 // Used for polymorphic list (newPickerModel)
-func (e *AccessEntry) Subtitle() string {
+func (e *AccessEntryView) Subtitle() string {
 	return "Handle search results"
 }
 
 // Used for polymorphic list (newPickerModel)
-func (e *AccessEntry) Noun() string {
+func (e *AccessEntryView) Noun() string {
 	return "handles"
 }
 

@@ -139,3 +139,23 @@ func printProcessFilter(filter *process.ProcessFilter) {
 
 	fmt.Println()
 }
+
+func createAccessEntryView(entries []*registry.AccessEntry) []*registry.AccessEntryView {
+	var result []*registry.AccessEntryView
+	for _, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		ppid, ppath := process.LookupParent(entry.Pid, store.PsTable)
+		if ppath == "." {
+			ppath = ""
+		}
+		result = append(result, &registry.AccessEntryView{
+			Entry:       entry,
+			ProcessPath: store.PsTable.LookupProcessPath(entry.Pid),
+			ParentPid:   ppid,
+			ParentPath:  ppath,
+		})
+	}
+	return result
+}
