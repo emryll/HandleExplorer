@@ -118,6 +118,7 @@ func CliPsCommand(tokens []string) {
 	var filter = &process.ProcessFilter{}
 	if len(tokens) == 0 {
 		filter = tmenu.PsFilterSelectionMenu()
+		//printProcessFilter(filter)
 	} else {
 		filter.Pids = make(map[uint32]bool)
 		pids := parsePsTargetString(tokens[0])
@@ -128,6 +129,7 @@ func CliPsCommand(tokens []string) {
 
 	// PsFilterSelectionMenu may return nil...
 	if filter == nil { // avoid nil pointer panic
+		fmt.Println("[dbg] filter is nil")
 		filter = &process.ProcessFilter{}
 	}
 
@@ -176,7 +178,8 @@ func CliFindCommand(flags []string) {
 		return
 	}
 
-	if selected := tlist.RenderList(entries); selected != nil {
+	entriesView := createAccessEntryView(entries)
+	if selected := tlist.RenderList(entriesView); selected != nil {
 		PrintItem(nil, selected)
 	}
 }
@@ -200,14 +203,19 @@ func CliClustersCommand(flags []string) {
 func CliOverviewCommand() {
 	store.AccessTracker.HandleTable.WaitReady()
 
-	yellow := color.New(color.FgHiYellow)
+	var (
+		yellow = color.New(color.FgHiYellow)
+		grey   = color.New(color.FgWhite)
+	)
 
-	fmt.Printf("handle count: ")
+	grey.Printf("\nhandle count: ")
 	yellow.Printf("%d\n", stats.GetTotalHandleCount(store.RuntimeStats))
 	PrintGlobalObjTypeDistribution()
 
-	fmt.Printf("process count: ")
+	grey.Printf("process count: ")
 	yellow.Printf("%d\n", store.PsTable.GetTotalProcessCount())
+
+	fmt.Print("\ntop 5 most handles:\n")
 	rankedProcesses := store.PsTable.RankProcessHandleCount()
 	for i := 0; i < 5; i++ {
 		if i >= len(rankedProcesses) {
@@ -215,9 +223,10 @@ func CliOverviewCommand() {
 		}
 		ps := rankedProcesses[i]
 		name := filepath.Base(ps.Path)
-		fmt.Printf("\t- [%d handles] ", ps.GetHandleCount())
-		yellow.Printf("PID %d", ps.ProcessId)
-		fmt.Printf("(%s)\n", utils.OrUnknown(name))
+		grey.Printf("\t[%d handles] ", ps.GetHandleCount())
+		fmt.Printf("PID ")
+		yellow.Printf("%d", ps.ProcessId)
+		grey.Printf(" (%s)\n", utils.OrUnknown(name))
 	}
 
 	//TODO most wide-reaching
@@ -233,11 +242,14 @@ func CliOverviewCommand() {
 		if i >= len(clusters) {
 			break
 		}
-		fmt.Printf("\t- [%d] %s : %s\n", len(clusters[i].Members),
-			nt.GetTypeName(clusters[i].ObjType), clusters[i].ObjName)
+		grey.Printf("\t[%d] ", len(clusters[i].Members))
+		fmt.Printf("%s : ", nt.GetTypeName(clusters[i].ObjType))
+		yellow.Printf("%s\n", clusters[i].ObjName)
 	}
 	if len(clusters) > 5 {
-		fmt.Printf("\t(and %d others)\n", len(clusters)-5)
+		grey.Printf("\t(and ")
+		yellow.Printf("%d", len(clusters)-5)
+		grey.Printf(" others)\n")
 	}
 	fmt.Println()
 	PrintClusterStats(nil, &clusterStats)
@@ -253,7 +265,7 @@ func CliHelpCommand(tokens []string) {
 		PrintBasicHelp()
 		return
 	}
-	switch tokens[1] {
+	switch tokens[0] {
 	case "find":
 		fmt.Println("\tfind - Search for handles with filters.")
 		fmt.Println("Usage: find [flags]")
