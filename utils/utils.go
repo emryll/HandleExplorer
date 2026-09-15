@@ -78,7 +78,7 @@ func ParseAccessString(accessList string) Bitmask {
 func DisplayBitflags(mask Bitmask, domain uint8, width int) string {
 	flags := InterpretBitmaskValue(mask, domain, true).([]string)
 	sort.Slice(flags, func(i, j int) bool {
-		return GetFlagPriority(flags[i], domain) > GetFlagPriority(flags[j], domain)
+		return GetFlagPriority(flags[i]) > GetFlagPriority(flags[j])
 	})
 
 	var (
@@ -183,40 +183,32 @@ func IsEmptyName(name string) bool {
 
 // Print the string, or a dash if empty
 func OrDash(s string) string {
-	if strings.TrimSpace(s) == "" {
-		return "-"
-	}
-	return s
+	return DefaultOnEmpty(s, "-")
 }
 
 // Print the string, or "anonymous" if empty
 func OrAnon(s string) string {
-	if s == "" {
-		return "anonymous"
-	}
-	return s
+	return DefaultOnEmpty(s, "anonymous")
 }
 
 // Print the string, or "(anonymous)" if empty
 func OrAnon2(s string) string {
-	if s == "" {
-		return "(anonymous)"
-	}
-	return s
+	return DefaultOnEmpty(s, "(anonymous)")
 }
 
 // Print the string, or "unknown" if empty
 func OrUnknown(s string) string {
-	if s == "" {
-		return "unknown"
-	}
-	return s
+	return DefaultOnEmpty(s, "unknown")
 }
 
 // Print the string, or "unknown" if empty
 func OrUnknown2(s string) string {
-	if s == "" {
-		return "(unknown)"
+	return DefaultOnEmpty(s, "(unknown)")
+}
+
+func DefaultOnEmpty(s, fallback string) string {
+	if IsEmptyName(s) {
+		return fallback
 	}
 	return s
 }
