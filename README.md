@@ -12,16 +12,23 @@ https://github.com/user-attachments/assets/f405c4cd-e00a-4a25-95c5-0b2fcc7a9c91
 - Find overlapping object access
   
 ## Requirements
-- Windows 10 or 11
+- Windows 10 or 11 (x64)
+
+If you want to build it yourself:
 - C compiler
 - [Go](https://go.dev/doc/install)
 
 ## Usage
-> Currently not usable.. Very soon
+It is recommended to simply [download the latest release](https://github.com/emryll/HandleExplorer/releases).
+
+If you want, you can also build it yourself:
 ```
-git clone https://github.com/emryll/HandleExplorer.git
+git clone https://github.com/emryll/HandleExplorer
 cd .\HandleExplorer\
-go install
+
+go mod init HandleExplorer
+go mod tidy
+go build
 .\HandleExplorer.exe
 ```
 *Run the help command if needed*
