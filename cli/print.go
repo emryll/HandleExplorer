@@ -160,6 +160,7 @@ func PrintProcess(w io.Writer, ps *process.Process) {
 	}
 	fmt.Fprintln(w, "overlapping processes:")
 	PrintPathDistribution(w, frequencyTable)
+	fmt.Fprintln(w)
 }
 
 func PrintProcessByPid(w io.Writer, pid uint32) {

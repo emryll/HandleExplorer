@@ -208,9 +208,7 @@ func (p *Process) Columns() []tlist.Column {
 
 func (p *Process) Fields() []string {
 	parent := fmt.Sprintf("PID %d", p.ParentPid)
-	if p.ParentPath != "" {
-		parent += fmt.Sprintf(" (%s)", utils.OrUnknown(filepath.Base(p.ParentPath)))
-	}
+	parent += fmt.Sprintf(" (%s)", utils.OrUnknown(filepath.Base(p.ParentPath)))
 
 	return []string{
 		fmt.Sprint(p.GetHandleCount()),
