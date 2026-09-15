@@ -2,6 +2,7 @@ package app
 
 import (
 	"HandleExplorer/cli"
+	"HandleExplorer/process"
 	ps "HandleExplorer/process"
 	"HandleExplorer/store"
 	"HandleExplorer/utils"
@@ -15,6 +16,11 @@ import (
 func Run() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
+
+	if !process.AmElevated() {
+		utils.PrintWithRedLabel(nil, "[WARNING]",
+			"You should run this program as administrator! Otherwise some information may be inaccessible.\n")
+	}
 
 	config := ParseCmdLine(os.Args)
 	if config.Debug {

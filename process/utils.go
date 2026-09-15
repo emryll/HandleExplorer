@@ -2,6 +2,7 @@ package process
 
 import (
 	tlist "HandleExplorer/tui/list"
+	"HandleExplorer/utils"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -147,6 +148,13 @@ func IsProcessElevated(hProcess windows.Handle) (bool, error) {
 	return elevation.TokenIsElevated != 0, nil
 }
 
+// Check own process elevation.
+// True means elevated. Error returns false also.
+func AmElevated() bool {
+	elevated, _ := IsProcessElevated(windows.CurrentProcess())
+	return elevated
+}
+
 func GetParentPid(handle windows.Handle) (uint32, error) {
 	var (
 		pbi    windows.PROCESS_BASIC_INFORMATION
@@ -201,7 +209,7 @@ func (p *Process) Columns() []tlist.Column {
 func (p *Process) Fields() []string {
 	parent := fmt.Sprintf("PID %d", p.ParentPid)
 	if p.ParentPath != "" {
-		parent += fmt.Sprintf(" (%s)", filepath.Base(p.ParentPath))
+		parent += fmt.Sprintf(" (%s)", utils.OrUnknown(filepath.Base(p.ParentPath)))
 	}
 
 	return []string{
@@ -223,8 +231,7 @@ func (p *Process) RightStages() []string {
 	}
 
 	return []string{
-		fmt.Sprintf("PID %d (%s)", p.ParentPid, p.ParentPath),
-		fmt.Sprintf("PID %d (...)", p.ParentPid),
+		fmt.Sprintf("PID %d (%s)", p.ParentPid, utils.OrUnknown(filepath.Base(p.ParentPath))),
 		fmt.Sprintf("PID %d", p.ParentPid),
 	}
 }
