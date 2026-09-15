@@ -190,13 +190,22 @@ func (e *AccessEntryView) Fields() []string {
 		return nil
 	}
 
+	var entryName string
+	switch e.Entry.Object {
+	case nt.OBJ_TYPE_PROCESS, nt.OBJ_TYPE_THREAD:
+		entryName = utils.OrUnknown2(e.Entry.Name)
+	default:
+		entryName = utils.OrAnon2(e.Entry.Name)
+	}
+
 	accessingPs := fmt.Sprintf("PID %d (%s)",
 		e.Entry.Pid, utils.OrUnknown(filepath.Base(e.ProcessPath)))
+
 	domain := nt.GetDomainFromObject(e.Entry.Object)
 	width := 35
 	return []string{
 		nt.GetTypeName(e.Entry.Object),
-		utils.OrAnon2(e.Entry.Name),
+		entryName,
 		accessingPs,
 		fmt.Sprintf("%v", utils.DisplayBitflags(e.Entry.Access, domain, width)),
 	}
