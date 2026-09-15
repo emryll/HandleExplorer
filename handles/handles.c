@@ -134,6 +134,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
                 if (ok) {
                     pathParam = BuildParameter(&pathParamSize, PARAMETER_ANSISTRING, "Path", path);
                 }
+                CloseHandle(hProcess);
             }
 
             parameters = (BYTE*)malloc(tidParamSize + pidParamSize + pathParamSize);
