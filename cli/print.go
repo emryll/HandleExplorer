@@ -38,6 +38,10 @@ func PrintItem[T tlist.ListItem](w io.Writer, item T) {
 		PrintAccessEntry(w, item)
 	case registry.AccessEntry:
 		PrintAccessEntry(w, &item)
+	case *registry.AccessEntryView:
+		PrintAccessEntry(w, item.Entry)
+	case registry.AccessEntryView:
+		PrintAccessEntry(w, item.Entry)
 	case *registry.Cluster:
 		PrintCluster(w, item)
 	case registry.Cluster:
@@ -214,7 +218,18 @@ func PrintAccessEntry(w io.Writer, e *registry.AccessEntry) {
 	grey.Fprintf(w, " (%s)\n", utils.OrUnknown(filepath.Base(path)))
 
 	fmt.Fprintf(w, "access level: ")
-	yellow.Fprintf(w, "%v\n", e.GetAccessAsString())
+	flags := e.GetAccessFlagsAsString()
+	sort.Slice(flags, func(i, j int) bool {
+		return utils.GetFlagPriority(flags[i]) > utils.GetFlagPriority(flags[j])
+	})
+
+	padding := len("access level")
+	for i, flag := range flags {
+		if i > 0 {
+			yellow.Fprintf(w, "%s| ", strings.Repeat(" ", padding))
+		}
+		yellow.Fprintf(w, "%s\n", flag)
+	}
 
 	fmt.Fprintln(w)
 	PrintObject(w, e.Object, e.Name)
@@ -280,7 +295,10 @@ func PrintClusterStats(w io.Writer, s *registry.ClusterStats) {
 		w = os.Stdout
 	}
 
-	yellow := color.New(color.FgHiYellow)
+	var (
+		yellow = color.New(color.FgHiYellow)
+		grey   = color.New(color.FgWhite)
+	)
 
 	fmt.Fprintf(w, "avg cluster size: ")
 	yellow.Fprintf(w, "%.1f\n", s.AvgSize)
@@ -337,7 +355,7 @@ func PrintClusterStats(w io.Writer, s *registry.ClusterStats) {
 	yellow.Fprintf(w, "%.1f%%", remainingPercentage)
 	fmt.Fprintf(w, " in ")
 	yellow.Fprintf(w, "%d", total-appDataCount-windirCount-pfCount)
-	fmt.Fprintf(w, " other directories\n")
+	grey.Fprintf(w, " other directories\n")
 
 	fmt.Fprintln(w)
 	//PrintDirDistribution(w, s.DirFrequency)
