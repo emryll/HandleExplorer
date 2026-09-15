@@ -210,3 +210,183 @@ var enumToVal = map[string]Enum{
 	//TODO: Controller
 	//TODO: Device
 }
+
+func GetFlagPriority(flag string) int {
+	switch flag {
+	//* Process
+	case "PROCESS_ALL_ACCESS":
+		return 100
+	case "PROCESS_CREATE_THREAD":
+		return 95
+	case "PROCESS_SET_INFORMATION":
+		return 90
+	case "PROCESS_CREATE_PROCESS":
+		return 85
+	case "PROCESS_SUSPEND_RESUME":
+		return 80
+	case "PROCESS_TERMINATE":
+		return 75
+	case "PROCESS_DUP_HANDLE":
+		return 70
+	case "PROCESS_VM_WRITE":
+		return 50
+	case "PROCESS_VM_READ":
+		return 30
+	case "PROCESS_VM_OPERATION":
+		return 5
+	case "PROCESS_QUERY_LIMITED_INFORMATION":
+		return 1
+
+	//* Thread
+	case "THREAD_ALL_ACCESS":
+		return 100
+	case "THREAD_SET_CONTEXT":
+		return 95
+	case "THREAD_IMPERSONATE":
+		return 90
+	case "THREAD_DIRECT_IMPERSONATION":
+		return 89
+	case "THREAD_SET_INFORMATION":
+		return 70
+	case "THREAD_SET_THREAD_TOKEN":
+		return 60
+	case "THREAD_SUSPEND_RESUME":
+		return 50
+	case "THREAD_TERMINATE":
+		return 40
+	case "THREAD_QUERY_INFORMATION":
+		return 10
+
+	//* File
+	case "FILE_GENERIC_EXECUTE":
+		return 100
+	case "FILE_EXECUTE":
+		return 90
+	case "FILE_GENERIC_WRITE":
+		return 70
+	case "FILE_WRITE_ATTRIBUTES":
+		return 60
+	case "FILE_WRITE_DATA":
+		return 50
+	case "FILE_WRITE_EA":
+		return 40
+	case "FILE_GENERIC_READ":
+		return 30
+	case "FILE_READ_EA":
+		return 21
+	case "FILE_READ_DATA":
+		return 20
+	case "FILE_READ_ATTRIBUTES":
+		return 10
+
+	//* Key
+	case "KEY_ALL_ACCESS":
+		return 100
+	case "KEY_NOTIFY":
+		return 70
+	case "KEY_CREATE_SUB_KEYS":
+		return 50
+	case "KEY_WRITE":
+		return 40
+	case "KEY_READ":
+		return 30
+	// same as KEY_READ according to MSDN
+	case "KEY_EXECUTE":
+		return 30
+	case "KEY_QUERY_VALUE":
+		return 20
+	case "KEY_WOW64_32KEY":
+		return 12
+	case "KEY_WOW64_64KEY":
+		return 11
+	case "KEY_CREATE_LINK": // "reserved for system use"
+		return 10
+
+	//* Section
+	case "SECTION_ALL_ACCESS":
+		return 100
+	case "SECTION_MAP_EXECUTE":
+		return 80
+	case "SECTION_EXTEND_SIZE":
+		return 50
+	case "SECTION_MAP_WRITE":
+		return 40
+	case "SECTION_MAP_READ":
+		return 20
+	case "SECTION_QUERY":
+		return 10
+
+	//* Token
+	case "TOKEN_ALL_ACCESS":
+		return 100
+	case "TOKEN_IMPERSONATE":
+		return 90
+	case "TOKEN_DUPLICATE":
+		return 87
+	// adjust privileges, groups, default + write
+	case "TOKEN_WRITE":
+		return 70
+	case "TOKEN_ADJUST_PRIMARY":
+		return 65
+	case "TOKEN_ADJUST_DEFAULT":
+		return 64
+	case "TOKEN_ADJUST_SESSIONID":
+		return 62
+	case "TOKEN_ADJUST_GROUPS":
+		return 61
+	case "TOKEN_ADJUST_PRIVILEGES":
+		return 60
+	// STANDARD_RIGHTS_READ | TOKEN_QUERY
+	case "TOKEN_READ":
+		return 50
+	case "TOKEN_EXECUTE":
+		return 49
+	case "TOKEN_QUERY":
+		return 45
+	case "TOKEN_QUERY_SOURCE":
+		return 42
+
+	//* Job
+	case "JOB_OBJECT_ALL_ACCESS":
+		return 100
+	case "JOB_OBJECT_TERMINATE":
+		return 90
+	case "JOB_OBJECT_ASSIGN_PROCESS":
+		return 70
+	case "JOB_OBJECT_SET_SECURITY_ATTRIBUTES": // deprecated
+		return 35
+	case "JOB_OBJECT_SET_ATTRIBUTES":
+		return 30
+	case "JOB_OBJECT_QUERY":
+		return 20
+
+	//* Desktop
+	case "DESKTOP_HOOKCONTROL":
+		return 100
+	case "DESKTOP_CREATEMENU":
+		return 80
+	case "DESKTOP_CREATEWINDOW":
+		return 70
+	case "DESKTOP_ENUMERATE":
+		return 50
+	case "DESKTOP_JOURNALPLAYBACK":
+		return 45
+	case "DESKTOP_JOURNALRECORD":
+		return 40
+	case "DESKTOP_WRITEOBJECTS":
+		return 40
+	case "DESKTOP_SWITCHDESKTOP":
+		return 20
+	case "DESKTOP_READOBJECTS":
+		return 15
+
+	//* Pipe
+	case "PIPE_ACCESS_DUPLEX":
+		return 3
+	case "PIPE_ACCESS_OUTBOUND":
+		return 2
+	case "PIPE_ACCESS_INBOUND":
+		return 1
+	}
+	return 0
+}
