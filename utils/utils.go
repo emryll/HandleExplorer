@@ -254,6 +254,34 @@ func PrintDescription() {
 	fmt.Print("\tTo view available commands, run \"help\"\n")
 }
 
+const DEFAULT_ERROR_LOG = "./log/errors.log"
+
+// Log an error to provided file(s).
+// If no path is provided, DEFAULT_ERROR_LOG is used.
+// Log files (and dirs) are created if they don't exist.
+func LogError(err error, paths ...string) {
+	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	for _, path := range paths {
+		os.MkdirAll(filepath.Dir(path), 0644)
+		f, err := os.OpenFile(path, flags, 0644)
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		PrintError(f, "%v", err)
+	}
+
+	if len(paths) == 0 {
+		os.MkdirAll(filepath.Dir(DEFAULT_ERROR_LOG), 0644)
+		f, err := os.OpenFile(DEFAULT_ERROR_LOG, flags, 0644)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		PrintError(f, "%v", err)
+	}
+}
+
 //*=======================[ Generic utils ]==========================
 
 func GetInput(reader *bufio.Reader, msg ...string) string {
