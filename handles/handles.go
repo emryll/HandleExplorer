@@ -40,6 +40,7 @@ func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
 	entry.Pid = h.Pid
 	entry.Params = h.Parameters
 	entry.Access = (utils.Bitmask)(h.Access)
+	entry.Address = h.Address
 
 	switch entry.Object {
 	case nt.OBJ_TYPE_PROCESS:
@@ -79,6 +80,7 @@ func (h cHandleEntry) GoEntry() HandleEntry {
 	entry.LastSeen = h.LastSeen
 	entry.Handle = h.Handle
 	entry.Access = h.Access
+	entry.Address = h.Address
 	entry.Type = h.Type
 	entry.Pid = h.Pid
 

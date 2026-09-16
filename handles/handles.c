@@ -69,11 +69,12 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
             printf("[CRITICAL] Failed to realloc (%dB)\n", ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
         }
 
-        handleTable[*handleCount].Type   = GetHandleObjectType(hObject);
-        handleTable[*handleCount].Pid    = handleInfo.UniqueProcessId;
-        handleTable[*handleCount].Access = handleInfo.GrantedAccess;
-        handleTable[*handleCount].Handle = (DWORD)handleInfo.HandleValue;
-        handleTable[*handleCount].Params = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
+        handleTable[*handleCount].Type    = GetHandleObjectType(hObject);
+        handleTable[*handleCount].Pid     = handleInfo.UniqueProcessId;
+        handleTable[*handleCount].Access  = handleInfo.GrantedAccess;
+        handleTable[*handleCount].Handle  = (DWORD)handleInfo.HandleValue;
+        handleTable[*handleCount].Address = handleInfo.Object;
+        handleTable[*handleCount].Params  = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
         CloseHandle(hObject);
         (*handleCount)++;
     }

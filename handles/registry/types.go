@@ -6,12 +6,13 @@ import (
 )
 
 type AccessEntry struct {
-	Object uint32 // type enum
-	Name   string // name of object
-	Pid    uint32 // who accessed the object
-	Handle uint32 // raw handle value used as id
-	Access utils.Bitmask
-	Params map[string]utils.Parameter // extended object info
+	Object  uint32 // type enum
+	Name    string // name of object
+	Pid     uint32 // who accessed the object
+	Handle  uint32 // raw handle value used as id
+	Access  utils.Bitmask
+	Address uintptr
+	Params  map[string]utils.Parameter // extended object info
 }
 
 // Lookup table for object interactions

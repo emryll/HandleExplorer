@@ -17,8 +17,9 @@ typedef struct {
     size_t paramsSize; //32
     DWORD Handle;      //36 
     DWORD Access;      //40
-    DWORD Type;        //44
-    DWORD Pid;         //48
+	PVOID Address;     //44
+    DWORD Type;        //52
+    DWORD Pid;         //56
 } HANDLE_ENTRY;
 
 
