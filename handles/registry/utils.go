@@ -38,29 +38,51 @@ func (reg *ObjectAccessRegistry) FindOverlappingWithPs(pid uint32) (map[uint32]i
 		return nil, nil
 	}
 
-	var clusters []Cluster
-	overlapping := make(map[uint32]int)
-	for key := range reg.ProcessLookup[pid] {
-		if key.Name == "" {
-			continue // cant track anon objects currently :(
-		}
-		cluster := Cluster{
-			ObjName: key.Name,
-			ObjType: key.ObjType,
-		}
-		// add all other processes that accessed the named object
-		for objKey := range reg.ObjectLookup[key.ObjType] {
-			if objKey.Name == key.Name {
-				if objKey.Pid != pid {
-					overlapping[objKey.Pid]++
-				}
-				cluster.Members = append(cluster.Members, objKey.Pid)
-			}
-		}
-		if len(cluster.Members) > 1 {
-			clusters = append(clusters, cluster)
+	// shouldnt be duplicates, but using map just in case
+	objects := make(map[uintptr]bool)
+	//* collect all objects accessed by this process
+	for _, entries := range reg.ProcessLookup[pid] {
+		for _, entry := range entries {
+			objects[entry.Address] = true
 		}
 	}
+
+	var (
+		clusters    []Cluster
+		overlapping = make(map[uint32]int)
+	)
+
+	//* find all other processes that accessed these objects
+	for address := range objects {
+		if len(reg.AddressLookup[address]) == 0 {
+			continue
+		}
+		var (
+			cluster Cluster
+			//? the object name and type are fetched
+			//? from the first entry with that info
+			sample AccessEntry
+		)
+		for pid, entries := range reg.AddressLookup[address] {
+			overlapping[pid]++
+			cluster.Members = append(cluster.Members, pid)
+			if cluster.ObjType != 0 && !utils.IsEmptyName(cluster.ObjName) {
+				continue
+			}
+
+			for _, entry := range entries {
+				sample.Object = entry.Object
+				if utils.IsEmptyName(entry.Name) {
+					sample.Name = entry.Name
+				}
+			}
+		}
+		cluster.Address = address
+		cluster.ObjName = sample.Name
+		cluster.ObjType = sample.Object
+		clusters = append(clusters, cluster)
+	}
+
 	return overlapping, clusters
 }
 
