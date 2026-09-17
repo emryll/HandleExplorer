@@ -59,9 +59,7 @@ func CommandParsingLoop(wg *sync.WaitGroup, cancel context.CancelFunc) {
 		// start refresh just in-case
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			if !store.AccessTracker.HandleTable.Valid() {
-				store.AccessTracker.HandleTable.Init()
-			}
+			store.AccessTracker.RefreshIfStale()
 		}(wg)
 	}
 }
@@ -187,7 +185,7 @@ func CliFindCommand(flags []string) {
 // Main routine for parsing and executing the
 // "clusters" command (find overlapping object access)
 func CliClustersCommand(flags []string) {
-	store.AccessTracker.HandleTable.WaitReady()
+	store.AccessTracker.WaitReady()
 
 	filter := parseClustersFlags(flags)
 	clusters, stats := store.AccessTracker.AccessRegistry.
@@ -201,7 +199,7 @@ func CliClustersCommand(flags []string) {
 
 // Main routine for "overview" command.
 func CliOverviewCommand() {
-	store.AccessTracker.HandleTable.WaitReady()
+	store.AccessTracker.WaitReady()
 
 	var (
 		yellow = color.New(color.FgHiYellow)
