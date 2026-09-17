@@ -29,7 +29,7 @@ func Run() {
 
 	wg.Add(2)
 	go ps.ProcessScanner(&wg, ctx, store.PsTable, store.AccessTracker)
-	go store.AccessTracker.HandleTable.Init()
+	go store.AccessTracker.Refresh()
 
 	utils.PrintBanner(MAJOR_VERSION, MINOR_VERSION)
 	cli.CommandParsingLoop(&wg, cancel)
