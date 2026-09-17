@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 )
@@ -11,4 +12,5 @@ func DebugInit() {
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
+	fmt.Println("[i] Debug interface started... View callstacks on localhost:6060")
 }
