@@ -4,7 +4,6 @@ import (
 	"HandleExplorer/handles/registry"
 	"HandleExplorer/nt"
 	"HandleExplorer/process"
-	"HandleExplorer/profiler"
 	"HandleExplorer/stats"
 	"math"
 	"sort"
@@ -20,15 +19,10 @@ import (
 // You should only use the mutex if you
 // directly access cache, never for methods.
 type HandleCache struct {
-	mu sync.RWMutex
-	// pid -> objType (NT name) -> handle raw value
-	Cache     map[uint32]map[string]map[uint32]*HandleEntry // pid -> object type -> handle
+	sync.RWMutex
+	// pid -> object type id -> handle raw value
+	Cache     map[uint32]map[uint32]map[uint32]*HandleEntry // pid -> object type -> handle
 	TimeStamp time.Time                                     // last updated
-
-	refreshMu sync.RWMutex // for state check/set
-	// nil indicates ready-state
-	// non-nil means a refresh is in progress.
-	refreshing chan struct{}
 
 	// dependency injection to avoid import cycle
 	reg *registry.ObjectAccessRegistry
@@ -36,122 +30,10 @@ type HandleCache struct {
 	rs  *stats.SessionStats
 }
 
-//? The handle cache has waiting functionality
-//? because the cache refresh is expensive, so
-//? it is done in the background, but object
-//? access data should not be used until it is ready.
-
-//? Call HandleTable.WaitReady() before using the OAR,
-//? in order to guarantee the data has not gone stale.
-
-// Set handle cache state as being refreshed.
-// Call CacheReady when the refresh has finished.
-// Return value true indicates refresh was set,
-// while false indicates refresh is in progress.
-// Only refresh the cache if this returns true!
-func (c *HandleCache) SetRefresh() bool {
-	c.refreshMu.Lock()
-	defer c.refreshMu.Unlock()
-
-	if c.refreshing == nil {
-		c.refreshing = make(chan struct{})
-		return true
-	}
-	return false
-}
-
-// Set the handle cache state as ready.
-// This WILL write lock the handle cache mutex.
-func (c *HandleCache) SetReady() {
-	c.refreshMu.Lock()
-	defer c.refreshMu.Unlock()
-
-	if c.refreshing != nil {
-		close(c.refreshing)
-		// a closed channel is non-nil,
-		// but closing it causes panic
-		c.refreshing = nil
-	}
-}
-
-// Wait until the handle cache has finished refresh.
-// If there is no refresh, it will immediately return.
-// This WILL read-lock the handle cache mutex (quick)
-func (c *HandleCache) WaitReady() {
-	c.refreshMu.RLock()
-	refreshing := c.refreshing
-	c.refreshMu.RUnlock()
-
-	if refreshing == nil {
-		return
-	}
-
-	// wait until signalled
-	<-refreshing
-}
-
-// Initialize cache, refilling it. Mutex is handled internally. Concurrency safe method.
-func (c *HandleCache) Init() {
-	cb := profiler.GetBenchmarker("CacheRefresh")
-	if cb != nil {
-		stop := cb.Benchmark()
-		defer stop()
-	}
-
-	c.SetRefresh()
-	handleTable := GetGlobalHandleTable()
-	c.rs.SetHandleCount(len(handleTable))
-
-	c.mu.Lock()
-	if c.Cache == nil {
-		c.Cache = make(map[uint32]map[string]map[uint32]*HandleEntry)
-	}
-
-	var (
-		newEntries []registry.AccessEntry
-		// total active handle counts are
-		// collected here, because it is
-		// hard to collect anywhere else.
-		psCounts = make(map[uint32]int)
-	)
-
-	for _, handle := range handleTable {
-		psCounts[handle.Pid]++
-		if c.Cache[handle.Pid] == nil {
-			c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
-		}
-
-		objectType := nt.GetTypeName(handle.Type)
-		if c.Cache[handle.Pid][objectType] == nil {
-			c.Cache[handle.Pid][objectType] = make(map[uint32]*HandleEntry)
-		}
-
-		if entry, exists := c.Cache[handle.Pid][objectType][handle.Handle]; exists {
-			entry.LastSeen = time.Now().UnixMilli()
-			entry.Access |= handle.Access
-		} else {
-			c.Cache[handle.Pid][objectType][handle.Handle] = &handle
-			entry := handle.ConvertToAccessEntry()
-			newEntries = append(newEntries, entry)
-		}
-	}
-	c.mu.Unlock()
-
-	c.reg.Lock()
-	defer c.reg.Unlock()
-	for _, entry := range newEntries {
-		c.reg.AddEntryRaw(entry)
-	}
-	c.TimeStamp = time.Now()
-	c.SetReady()
-
-	c.pst.UpdatePsHandleCount(psCounts)
-}
-
-// Is handle table cache ready for use. Mutex is handled internally
-func (c *HandleCache) Valid() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+// Has the handle cache gone stale? Mutex is handled internally
+func (c *HandleCache) IsStale() bool {
+	c.RLock()
+	defer c.RUnlock()
 	if c.Cache == nil {
 		return false
 	}
@@ -168,36 +50,35 @@ func (c *HandleCache) Add(handle *HandleEntry) {
 		handle.LastSeen = handle.FirstSeen
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	if c.Cache[handle.Pid] == nil {
-		c.Cache[handle.Pid] = make(map[string]map[uint32]*HandleEntry)
+		c.Cache[handle.Pid] = make(map[uint32]map[uint32]*HandleEntry)
 	}
-	objectType := nt.GetTypeName(handle.Type)
-	if c.Cache[handle.Pid][objectType] == nil {
-		c.Cache[handle.Pid][objectType] = make(map[uint32]*HandleEntry)
+	if c.Cache[handle.Pid][handle.Type] == nil {
+		c.Cache[handle.Pid][handle.Type] = make(map[uint32]*HandleEntry)
 	}
 
 	//* Add handle, or update existing
-	if entry, exists := c.Cache[handle.Pid][objectType][handle.Handle]; exists {
+	if entry, exists := c.Cache[handle.Pid][handle.Type][handle.Handle]; exists {
 		entry.LastSeen = time.Now().UnixMilli()
 	} else {
-		c.Cache[handle.Pid][objectType][handle.Handle] = handle
+		c.Cache[handle.Pid][handle.Type][handle.Handle] = handle
 	}
 }
 
 // Remove all handle entries held by given process
 func (c *HandleCache) Remove(pid uint32) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	delete(c.Cache, pid)
 }
 
-func (c *HandleCache) GetPsHandleCountsByType(pid uint32) map[string]int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+func (c *HandleCache) GetPsHandleCountsByType(pid uint32) map[uint32]int {
+	c.RLock()
+	defer c.RUnlock()
 
-	results := make(map[string]int)
+	results := make(map[uint32]int)
 	for objType, typeMap := range c.Cache[pid] {
 		if len(typeMap) > 0 {
 			results[objType] = len(typeMap)
@@ -262,7 +143,7 @@ func (c *HandleCache) Cleanup(quota ...int) {
 		cleanupQuota = quota[0]
 	}
 
-	c.mu.RLock()
+	c.RLock()
 	// helper struct to avoid recalculating priority
 	type handleWithPriority struct {
 		handle   *HandleEntry
@@ -280,19 +161,19 @@ func (c *HandleCache) Cleanup(quota ...int) {
 			}
 		}
 	}
-	c.mu.RUnlock()
+	c.RUnlock()
 	//* sort handles in descending priority
 	sort.Slice(handles, func(i, j int) bool {
 		return handles[i].priority > handles[j].priority
 	})
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	//* cleanup highest priority handles until quota is met
 	for i := 0; i < cleanupQuota && i < len(handles); i++ {
 		var (
 			pid        = handles[i].handle.Pid
 			handle     = handles[i].handle.Handle
-			objectType = nt.GetTypeName(handles[i].handle.Type)
+			objectType = handles[i].handle.Type
 		)
 		// between mutex it couldve been deleted
 		if _, exists := c.Cache[pid]; !exists {
