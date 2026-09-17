@@ -6,23 +6,25 @@ import (
 )
 
 type AccessEntry struct {
-	Object  uint32 // type enum
-	Name    string // name of object
-	Pid     uint32 // who accessed the object
-	Handle  uint32 // raw handle value used as id
+	Object  uint32  // type enum
+	Name    string  // name of object
+	Pid     uint32  // who accessed the object
+	Handle  uint32  // raw handle value used as id
+	Address uintptr // kernel object address
 	Access  utils.Bitmask
-	Address uintptr
 	Params  map[string]utils.Parameter // extended object info
 }
 
 // Lookup table for object interactions
 // 500 000 entries would be around 32MB
 type ObjectAccessRegistry struct {
-	sync.RWMutex // used internally in methods
-	// process -> object type -> name -> entry
+	sync.RWMutex
+	// process -> object type + name -> entry
 	ProcessLookup map[uint32]map[ProcessAccessKey][]*AccessEntry // array is for anon objects
-	// object type -> name -> process -> entry
+	// object type -> name + process -> entry
 	ObjectLookup map[uint32]map[ObjectAccessKey][]*AccessEntry
+	// object address -> accessing process id -> entry
+	AddressLookup map[uintptr]map[uint32][]*AccessEntry
 }
 
 // With the triple nested map, amount of maps grows very quickly.
@@ -50,6 +52,7 @@ type Cluster struct {
 	Members []uint32
 	ObjType uint32
 	ObjName string
+	Address uintptr
 	Params  map[string]utils.Parameter
 }
 
