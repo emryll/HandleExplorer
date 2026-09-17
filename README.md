@@ -23,6 +23,9 @@ If you want to build it yourself:
 ## Usage
 It is recommended to simply [download the latest release](https://github.com/emryll/HandleExplorer/releases).
 
+You should run the program from an elevated PowerShell window, or the LNK shortcut.
+*Running directly from File Explorer GUI also works if you run as administrator.*
+
 If you want, you can also build it yourself:
 ```
 git clone https://github.com/emryll/HandleExplorer
@@ -34,3 +37,12 @@ go build
 .\HandleExplorer.exe
 ```
 *Run the help command if needed*
+
+## Future
+Features that will be in the next few versions:
+- Better object tracking (any object)
+- Automatic alerts from statistics and set rules
+- Statistical outlier identification
+- More advanced statistical analysis
+- Process lineage tracking
+- Upgraded UI
