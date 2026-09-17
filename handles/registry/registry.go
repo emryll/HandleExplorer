@@ -33,6 +33,9 @@ func (reg *ObjectAccessRegistry) AddEntryRaw(entry AccessEntry) {
 	if reg.ObjectLookup[entry.Object] == nil {
 		reg.ObjectLookup[entry.Object] = make(map[ObjectAccessKey][]*AccessEntry)
 	}
+	if reg.AddressLookup[entry.Address] == nil {
+		reg.AddressLookup[entry.Address] = make(map[uint32][]*AccessEntry)
+	}
 
 	objectKey := entry.CreateObjectKey()
 	processKey := entry.CreateProcessKey()
@@ -50,6 +53,7 @@ func (reg *ObjectAccessRegistry) AddEntryRaw(entry AccessEntry) {
 	e := entry // just to be safe with uniqueness...
 	reg.ProcessLookup[e.Pid][processKey] = append(reg.ProcessLookup[e.Pid][processKey], &e)
 	reg.ObjectLookup[e.Object][objectKey] = append(reg.ObjectLookup[e.Object][objectKey], &e)
+	reg.AddressLookup[e.Address][e.Pid] = append(reg.AddressLookup[e.Address][e.Pid], &e)
 }
 
 // Add an interaction to the registry or update existing.
@@ -74,9 +78,8 @@ func (reg *ObjectAccessRegistry) RemoveEntriesByProcess(pid uint32) {
 	for psKey, entries := range reg.ProcessLookup[pid] {
 		for _, entry := range entries {
 			objKey := ObjectAccessKey{Name: psKey.Name, Pid: pid}
-			if len(reg.ObjectLookup[uint32(entry.Object)]) > 0 {
-				delete(reg.ObjectLookup[uint32(entry.Object)], objKey)
-			}
+			delete(reg.ObjectLookup[uint32(entry.Object)], objKey)
+			delete(reg.AddressLookup[entry.Address], pid)
 		}
 	}
 	delete(reg.ProcessLookup, pid)
