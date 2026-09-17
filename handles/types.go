@@ -14,6 +14,7 @@ type cHandleEntry struct {
 	ParamsSize uint64
 	Handle     uint32
 	Access     uint32
+	Address    uintptr
 	Type       uint32
 	Pid        uint32
 }
@@ -23,6 +24,7 @@ type HandleEntry struct {
 	LastSeen   int64
 	Handle     uint32
 	Access     uint32
+	Address    uintptr
 	Type       uint32
 	Pid        uint32
 	Parameters map[string]utils.Parameter
