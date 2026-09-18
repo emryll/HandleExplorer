@@ -5,7 +5,10 @@
 #include <ntdef.h>
 
 #define HANDLE_INFO_MEM_BLOCK 0x10000 // 64kb
+
 #define SystemHandleInformation 0x10
+#define SystemExtendedHandleInformation 0x40
+
 #define ObjectBasicInformation 0
 #define ObjectNameInformation 1
 #define ObjectTypeInformation 2
@@ -41,6 +44,7 @@ typedef enum {
 HANDLE_ENTRY* GetGlobalHandleTable(size_t*);
 DWORD GetHandleObjectType(HANDLE);
 BYTE* GetHandleParameters(HANDLE, DWORD, size_t*);
+char* GetWinstaOrDesktopName(HANDLE);
 char* GetObjectName(HANDLE);
 
 // utils.c
@@ -69,10 +73,27 @@ typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO {
     ULONG GrantedAccess;
 } SYSTEM_HANDLE_TABLE_ENTRY_INFO, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO;
 
+typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX {
+	PVOID Object;
+	ULONG_PTR UniqueProcessId;
+	ULONG_PTR HandleValue;
+	ULONG GrantedAccess;
+	USHORT CreatorBackTraceIndex;
+	USHORT ObjectTypeIndex;
+	ULONG HandleAttributes;
+	ULONG Reserved;
+} SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO_EX;
+
 typedef struct _SYSTEM_HANDLE_INFORMATION {
     ULONG NumberOfHandles;
     SYSTEM_HANDLE_TABLE_ENTRY_INFO Handles[1];
 } SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+   
+typedef struct _SYSTEM_HANDLE_INFORMATION_EX {
+	ULONG_PTR NumberOfHandles;
+	ULONG_PTR Reserved;
+	SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX Handles[1];
+} SYSTEM_HANDLE_INFORMATION_EX, *PSYSTEM_HANDLE_INFORMATION_EX;
    
 typedef struct __PUBLIC_OBJECT_TYPE_INFORMATION {
   UNICODE_STRING TypeName;
