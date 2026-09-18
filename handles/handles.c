@@ -17,34 +17,48 @@ static NQO NtQueryObject = NULL;
 // which calls NtQueryObject. Note that this call is quite heavy, currently typically taking 1000ms.
 // Caller must free returned handle table with FreeHandleTable. NULL is returned upon failure.
 HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
+    PSYSTEM_HANDLE_INFORMATION_EX handleTableInformation;
     HANDLE_ENTRY* handleTable = NULL;
     (*handleCount) = 0;
-    ULONG hiLenght = 0;
-    ULONG infoSize = HANDLE_INFO_MEM_BLOCK;
+    NTSTATUS status;
+
+    ULONG initialSize = 0x10000;
+    ULONG returnLenght = 0;
+    ULONG bufferSize = initialSize;
 
     NQSI NtQuerySystemInformation = (NQSI)GetProcAddress(GetModuleHandle("ntdll"), "NtQuerySystemInformation");
-    PSYSTEM_HANDLE_INFORMATION handleTableInformation = (PSYSTEM_HANDLE_INFORMATION)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, infoSize);
-    NTSTATUS status = NtQuerySystemInformation(SystemHandleInformation, handleTableInformation, infoSize, &hiLenght);
-    if (status == STATUS_INFO_LENGTH_MISMATCH) {
-        while (status == STATUS_INFO_LENGTH_MISMATCH) {
+    handleTableInformation = (PSYSTEM_HANDLE_INFORMATION_EX)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
+    
+    //* Query the global handle table
+    while (status = NtQuerySystemInformation(
+        SystemExtendedHandleInformation,
+        handleTableInformation,
+        bufferSize,
+        &returnLenght
+        ) == STATUS_INFO_LENGTH_MISMATCH) {
             HeapFree(GetProcessHeap(), 0, handleTableInformation);
-            infoSize += HANDLE_INFO_MEM_BLOCK;
-            if (infoSize > 10000000) return NULL; // avoid infinite loop with 10MB limit
-            handleTableInformation = (PSYSTEM_HANDLE_INFORMATION)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, infoSize);
-            status = NtQuerySystemInformation(SystemHandleInformation, handleTableInformation, infoSize, &hiLenght);
+            bufferSize *= 2;
+
+            // avoid infinite loop and high memory usage
+            if (bufferSize > MAX_HANDLE_TABLE_BUFFER) return NULL;
+                
+            handleTableInformation = (PSYSTEM_HANDLE_INFORMATION_EX)HeapAlloc(
+                GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
         }
-    } else if (status != STATUS_SUCCESS) {
+
+    if (status != STATUS_SUCCESS) {
         printf("failed to query system information, status: %X\n", status);
         HeapFree(GetProcessHeap(), 0, handleTableInformation);
         return NULL;
     }
-
+    
     //* main handle table enumeration loop
     for (int i = 0; i < handleTableInformation->NumberOfHandles; i++) {
-        SYSTEM_HANDLE_TABLE_ENTRY_INFO handleInfo = handleTableInformation->Handles[i];
+        SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleInfo = handleTableInformation->Handles[i];
 
         HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-            FALSE, handleInfo.UniqueProcessId);
+            FALSE, (USHORT)handleInfo.UniqueProcessId);
         if (hProcess == NULL) {
             continue;
         }
@@ -52,6 +66,8 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         HANDLE hObject = NULL;
         //TODO: what are the minimum required access rights?
         //* Duplicate handle to query information about the object
+        //DWORD access = STANDARD_RIGHTS_REQUIRED | GENERIC_READ;
+        DWORD access = DUPLICATE_SAME_ACCESS;
         if (!DuplicateHandle(hProcess, (HANDLE)(DWORD_PTR)handleInfo.HandleValue, GetCurrentProcess(),
                 &hObject, STANDARD_RIGHTS_REQUIRED | GENERIC_READ, FALSE, 0)) {
             DWORD err = GetLastError();
@@ -75,9 +91,17 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         handleTable[*handleCount].Handle  = (DWORD)handleInfo.HandleValue;
         handleTable[*handleCount].Address = handleInfo.Object;
         handleTable[*handleCount].Params  = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
+
+        if (handleInfo.ObjectTypeIndex == 37 &&
+        handleTable[*handleCount].Type != OBJ_TYPE_FILE &&
+        handleTable[*handleCount].Type != OBJ_TYPE_PIPE) {
+            printf("\n[dbg] id mismatch!!!!! (%d)", handleTable[*handleCount].Type);
+        }
+
         CloseHandle(hObject);
         (*handleCount)++;
     }
+    printf("\n");
     HeapFree(GetProcessHeap(), 0, handleTableInformation);
     return handleTable;
 }
@@ -154,7 +178,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             char path[1026];
             DWORD retLen = GetFinalPathNameByHandleA(hObject, path, 1026, 0);
             if (retLen == 0) {
-                //printf("[ERROR] Failed to get path of file, error code: %d\n", GetLastError());
+                printf("[ERROR] Failed to get path of file, error code: %d\n", GetLastError());
                 return parameters;
             }
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", path);
@@ -170,15 +194,6 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", path);
             break;
         }
-        case OBJ_TYPE_EVENT:
-        case OBJ_TYPE_MUTANT:
-        case OBJ_TYPE_SEMAPHORE:
-            char* name = GetObjectName(hObject);
-            if (name == NULL) break;
-
-            parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", name);
-            free(name);
-            break;
         case OBJ_TYPE_SYMLINK:
             ULONG returnLength = 0;
             UNICODE_STRING ucTarget;
@@ -215,6 +230,30 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
         // owning process
         // access rights or something like that
             break;*/
+        case OBJ_TYPE_DESKTOP:
+        case OBJ_TYPE_WINDOW_STATION: {
+            char* name = GetWinstaOrDesktopName(hObject);
+            if (name == NULL) break;
+
+            parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", name);
+            free(name);
+        }
+        case OBJ_TYPE_JOB:
+        case OBJ_TYPE_TIMER:
+        case OBJ_TYPE_IRTIMER:
+        case OBJ_TYPE_EVENT:
+        case OBJ_TYPE_MUTANT:
+        case OBJ_TYPE_SEMAPHORE:
+        case OBJ_TYPE_SECTION:
+        case OBJ_TYPE_DIRECTORY:
+        case OBJ_TYPE_IO_COMPLETION:
+        case OBJ_TYPE_ALPC_PORT:
+            char* name = GetObjectName(hObject);
+            if (name == NULL) break;
+
+            parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", name);
+            free(name);
+            break;
     }
     return parameters;
 }
@@ -250,10 +289,13 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Thread") == 0) {
         type = OBJ_TYPE_THREAD;
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"File") == 0) {
+        printf("[dbg] file handle ");
         if (GetFileType(hObject) == FILE_TYPE_PIPE) {
             type = OBJ_TYPE_PIPE;
+            printf("(pipe)\n");
         } else {
             type = OBJ_TYPE_FILE;
+            printf("(file)\n");
         }
     } else if (wcscmp(typeInfo->TypeName.Buffer, L"Event") == 0) {
         type = OBJ_TYPE_EVENT;
@@ -423,4 +465,14 @@ char* GetObjectName(HANDLE hObject) {
         return UnicodeToAnsi(info->Name);
     }
     return NULL;
+}
+
+char* GetWinstaOrDesktopName(HANDLE hObject) {
+    DWORD lenNeeded;
+    char* nameBuf = malloc(sizeof(char) * 1026);
+    //TODO: check for too short name and realloc
+    if (!GetUserObjectInformation(hObject, UOI_NAME, nameBuf, sizeof(nameBuf), &lenNeeded)) {
+        return NULL;
+    }
+    return nameBuf;
 }
