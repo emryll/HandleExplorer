@@ -467,6 +467,14 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     return type;
 }
 
+char* GetObjectNameWithTimeout(HANDLE hObject, DWORD dwMilliseconds) {
+    OBJECT_NAME_QUERY query = {0};
+    query.hObject = hObject;
+    HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)GetObjectName, &hObject, 0, NULL);
+    WaitForSingleObject(hThread, dwMilliseconds);
+    return query.out;
+}
+
 BOOL GetObjectName(OBJECT_NAME_QUERY* query) {
     if (query == NULL) return FALSE;
 
