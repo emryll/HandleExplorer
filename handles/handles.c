@@ -53,31 +53,50 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         return NULL;
     }
     
+    // these are for debugging file handle issue
+    int openProcessFails = 0;
+    int dupHandleFails = 0;
+    int totalFails = 0;
+
     //* main handle table enumeration loop
     for (int i = 0; i < handleTableInformation->NumberOfHandles; i++) {
         SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleInfo = handleTableInformation->Handles[i];
+        if (handleInfo.ObjectTypeIndex == 37) {
+            printf("\n[1] new handle entry (wintype %d, pid %d)\n",
+                handleInfo.ObjectTypeIndex, handleInfo.UniqueProcessId);
+        }
 
-        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-            FALSE, (USHORT)handleInfo.UniqueProcessId);
+        //TODO: what is process_query_limited_information needed for??
+        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION,
+            FALSE, handleInfo.UniqueProcessId);
         if (hProcess == NULL) {
+            if (handleInfo.ObjectTypeIndex == 37) openProcessFails++;
             continue;
         }
+        if (handleInfo.ObjectTypeIndex == 37) printf("[2] opened process handle\n");
 
         HANDLE hObject = NULL;
         //TODO: what are the minimum required access rights?
+        //TODO: try setting it as 0 default, but query_limited_information for thread or process
         //* Duplicate handle to query information about the object
         //DWORD access = STANDARD_RIGHTS_REQUIRED | GENERIC_READ;
         DWORD access = DUPLICATE_SAME_ACCESS;
-        if (!DuplicateHandle(hProcess, (HANDLE)(DWORD_PTR)handleInfo.HandleValue, GetCurrentProcess(),
-                &hObject, STANDARD_RIGHTS_REQUIRED | GENERIC_READ, FALSE, 0)) {
+        if (!DuplicateHandle(hProcess, (HANDLE)(DWORD_PTR)handleInfo.HandleValue,
+                GetCurrentProcess(), &hObject, access, FALSE, 0)) {
             DWORD err = GetLastError();
             if (err != ERROR_ACCESS_DENIED && err != ERROR_NOT_SUPPORTED && err != ERROR_INVALID_HANDLE) {
                 printf("Failed to duplicate handle, error: %d\n", err);
-            }
+            }/* else if (handleInfo.ObjectTypeIndex != 50) {
+                printf("unexpected error on DuplicateHandle: %d (windows type index %d)\n",
+                    err, handleInfo.ObjectTypeIndex);
+            }*/
+            if (handleInfo.ObjectTypeIndex == 37) dupHandleFails++;
+
             CloseHandle(hProcess);
             continue;
         }
         CloseHandle(hProcess);
+        if (handleInfo.ObjectTypeIndex == 37) printf("[3] duplicated handle (raw value %d)\n", handleInfo.HandleValue);
 
         //* create HANDLE_ENTRY
         handleTable = (HANDLE_ENTRY*)realloc(handleTable, ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
@@ -86,22 +105,26 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         }
 
         handleTable[*handleCount].Type    = GetHandleObjectType(hObject);
+        if (handleInfo.ObjectTypeIndex == 37) printf("[4] got type id\n");
         handleTable[*handleCount].Pid     = handleInfo.UniqueProcessId;
         handleTable[*handleCount].Access  = handleInfo.GrantedAccess;
         handleTable[*handleCount].Handle  = (DWORD)handleInfo.HandleValue;
         handleTable[*handleCount].Address = handleInfo.Object;
         handleTable[*handleCount].Params  = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
+        if (handleInfo.ObjectTypeIndex == 37) printf("[5] got params\n");
 
         if (handleInfo.ObjectTypeIndex == 37 &&
         handleTable[*handleCount].Type != OBJ_TYPE_FILE &&
         handleTable[*handleCount].Type != OBJ_TYPE_PIPE) {
-            printf("\n[dbg] id mismatch!!!!! (%d)", handleTable[*handleCount].Type);
+            printf("\n[dbg] id mismatch!!!!! (file as %d)", handleTable[*handleCount].Type);
         }
 
         CloseHandle(hObject);
         (*handleCount)++;
     }
     printf("\n");
+    printf("[dbg] %d file handles failed at OpenProcess\n", openProcessFails);
+    printf("[dbg] %d file handles failed at DuplicateHandle\n", dupHandleFails);
     HeapFree(GetProcessHeap(), 0, handleTableInformation);
     return handleTable;
 }
@@ -181,10 +204,11 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
                 printf("[ERROR] Failed to get path of file, error code: %d\n", GetLastError());
                 return parameters;
             }
+            printf("[dbg] filepath: %s\n", path);
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", path);
             break;
         }
-        case OBJ_TYPE_PIPE: {
+        /*case OBJ_TYPE_PIPE: {
             char path[1026];
             DWORD retLen = GetFinalPathNameByHandleA(hObject, path, 1026, VOLUME_NAME_NT | FILE_NAME_NORMALIZED);
             if (retLen == 0) {
@@ -193,7 +217,7 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
             }
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", path);
             break;
-        }
+        }*/
         case OBJ_TYPE_SYMLINK:
             ULONG returnLength = 0;
             UNICODE_STRING ucTarget;
@@ -248,7 +272,8 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
         case OBJ_TYPE_DIRECTORY:
         case OBJ_TYPE_IO_COMPLETION:
         case OBJ_TYPE_ALPC_PORT:
-            char* name = GetObjectName(hObject);
+        case OBJ_TYPE_PIPE:
+            char* name = GetObjectNameWithTimeout(hObject, 1000);
             if (name == NULL) break;
 
             parameters = BuildParameter(paramsSize, PARAMETER_ANSISTRING, "Name", name);
@@ -442,29 +467,57 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     return type;
 }
 
-char* GetObjectName(HANDLE hObject) {
+BOOL GetObjectName(OBJECT_NAME_QUERY* query) {
+    if (query == NULL) return FALSE;
+
     if (NtQueryObject == NULL) {
         NtQueryObject = (NQO)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryObject");
     }
-    
-    // First try with a stack buffer; grow if needed.
-    BYTE stackBuf[1024];
-    ULONG returnLen = 0;
-    NTSTATUS status = NtQueryObject(hObject,
-        ObjectNameInformation, stackBuf, sizeof(stackBuf), &returnLen);
-    //if (status == STATUS_BUFFER_TOO_SMALL || status == STATUS_INFO_LENGTH_MISMATCH) {
-        //TODO:
-    //}
+
+    size_t initalSize = 1024;
+    size_t bufSize = initalSize;
+    BYTE* buffer = (BYTE*)malloc(bufSize);
+    if (buffer == NULL) return FALSE;
+
+    NTSTATUS status;
+    ULONG returnLen;
+
+    while ((status = NtQueryObject(
+        query->hObject,
+        ObjectNameInformation,
+        buffer,
+        bufSize,
+        &returnLen
+    )) == STATUS_BUFFER_TOO_SMALL ||
+    status == STATUS_INFO_LENGTH_MISMATCH) {
+        bufSize *= 2;
+        buffer = realloc(buffer, bufSize);
+        if (buffer == NULL) return FALSE;
+    }
+
     if (status != STATUS_SUCCESS) {
         printf("[dbg] NtQueryObject failed with NTSTATUS %X\n", status);
-        return NULL;
+        return FALSE;
     }
-    POBJECT_NAME_INFORMATION info = (POBJECT_NAME_INFORMATION)stackBuf;
+    POBJECT_NAME_INFORMATION info = (POBJECT_NAME_INFORMATION)buffer;
     if (info->Name.Length > 0 && info->Name.Buffer != NULL) {
         int wlen = info->Name.Length / sizeof(WCHAR); // no null terminator guaranteed
-        return UnicodeToAnsi(info->Name);
+        query->out = UnicodeToAnsi(info->Name);
+        free(buffer);
+        return TRUE;
     }
-    return NULL;
+    free(buffer);
+    return FALSE;
+}
+
+char* GetObjectName2(HANDLE hObject) {
+    OBJECT_NAME_QUERY query = {0};
+    query.hObject = hObject;
+
+    if (GetObjectName(&query)) {
+        return NULL;
+    }
+    return query.out;
 }
 
 char* GetWinstaOrDesktopName(HANDLE hObject) {
