@@ -5,6 +5,7 @@
 #include <ntdef.h>
 
 #define HANDLE_INFO_MEM_BLOCK 0x10000 // 64kb
+#define MAX_HANDLE_TABLE_BUFFER 10000000
 
 #define SystemHandleInformation 0x10
 #define SystemExtendedHandleInformation 0x40
@@ -40,12 +41,19 @@ typedef enum {
 	PARAMETER_BYTES         = 7
 } PARAMETER_TYPE;
 
+// helper struct for name query with timeout
+typedef struct {
+	HANDLE hObject;
+	char* out;
+} OBJECT_NAME_QUERY;
+
 // handles.c
 HANDLE_ENTRY* GetGlobalHandleTable(size_t*);
 DWORD GetHandleObjectType(HANDLE);
 BYTE* GetHandleParameters(HANDLE, DWORD, size_t*);
 char* GetWinstaOrDesktopName(HANDLE);
-char* GetObjectName(HANDLE);
+char* GetObjectNameWithTimeout(HANDLE, DWORD);
+BOOL GetObjectName(OBJECT_NAME_QUERY*);
 
 // utils.c
 BYTE* BuildParameter(size_t*, DWORD, const char*, ...);
