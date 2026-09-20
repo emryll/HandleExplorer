@@ -20,6 +20,29 @@ static BOOLEAN ObjectTypeLookupInitialized;
 static std::map<DWORD, DWORD> ObjectTypeLookupTable;
 
 extern "C" {
+    // Convert the unstable Windows internal
+    // object type index into own stable type id.
+    //
+    // If the type lookup table fails to initialize,
+    // this will return 0 always. In that case, you
+    // should use NtQueryObject for each handle as fallback. 
+    DWORD GetObjectTypeIdFromWindex(DWORD typeWindex) {
+        if (!ObjectTypeLookupInitialized) {
+            NTSTATUS status = FillObjectTypeLookupTable();
+            if (status == OBJECT_TYPE) {
+                printf("[FATAL] Failed to initialize type lookup, NTSTATUS 0x%X\n", status);
+                return 0;
+            }
+        }
+        
+        auto it = ObjectTypeLookupTable.find(typeWindex);
+        if (it != ObjectTypeLookupTable.end()) {
+            return it->second;
+        }
+        return 0;
+    }
+
+    // Initialize the cached object type lookup.
     NTSTATUS FillObjectTypeLookupTable() {
         POBJECT_TYPES_INFORMATION typesInfo = NULL;
         NTSTATUS status = GetHandleTypesInformation(&typesInfo);
@@ -42,6 +65,8 @@ extern "C" {
         return status;
     }
 
+    // Wrapper to call NtQueryObject with ObjectTypesInformation.
+    // Caller must free the result with HeapFree if status is STATUS_SUCCESS.
     NTSTATUS GetHandleTypesInformation(POBJECT_TYPES_INFORMATION* out) {
         ULONG bufferSize = 0x1000;
         ULONG returnLength;
@@ -59,8 +84,10 @@ extern "C" {
         )) == STATUS_INFO_LENGTH_MISMATCH) {
 
             HeapFree(GetProcessHeap(), 0, buffer);
+
             bufferSize *= 2;
-            buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
+            buffer = HeapAlloc(
+                GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
 
             if (bufferSize > MAX_BUFFER_SIZE) {
                 return STATUS_BUFFER_OVERFLOW;
