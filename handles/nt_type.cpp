@@ -24,12 +24,15 @@ extern "C" {
     // object type index into own stable type id.
     //
     // If the type lookup table fails to initialize,
-    // this will return 0 always. In that case, you
-    // should use NtQueryObject for each handle as fallback. 
+    // this will return 0. In that case, you should
+    // use NtQueryObject for each handle as fallback.
+    //
+    // :param typeWindex:  Windows internal object type index
+    // :return:            Own stable object type id
     DWORD GetObjectTypeIdFromWindex(DWORD typeWindex) {
         if (!ObjectTypeLookupInitialized) {
             NTSTATUS status = FillObjectTypeLookupTable();
-            if (status == OBJECT_TYPE) {
+            if (status != STATUS_SUCCESS) {
                 printf("[FATAL] Failed to initialize type lookup, NTSTATUS 0x%X\n", status);
                 return 0;
             }
@@ -41,7 +44,7 @@ extern "C" {
         }
         return 0;
     }
-
+    
     // Initialize the cached object type lookup.
     NTSTATUS FillObjectTypeLookupTable() {
         POBJECT_TYPES_INFORMATION typesInfo = NULL;
@@ -54,7 +57,7 @@ extern "C" {
         for (ULONG i = 0; i < typesInfo->NumberOfTypes; i++) {
             DWORD id = GetObjectTypeIdFromName(type->TypeName);
             if (id != OBJ_TYPE_UNKNOWN) {
-                ObjectTypeLookupTable.insert({type->TypeIndex, id})
+                ObjectTypeLookupTable.insert({type->TypeIndex, id});
             }
 
             type = NEXT_OBJECT_TYPE(type);
@@ -86,12 +89,12 @@ extern "C" {
             HeapFree(GetProcessHeap(), 0, buffer);
 
             bufferSize *= 2;
-            buffer = HeapAlloc(
-                GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
-
             if (bufferSize > MAX_BUFFER_SIZE) {
                 return STATUS_BUFFER_OVERFLOW;
             }
+
+            buffer = HeapAlloc(
+                GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
         }
 
         if (status != STATUS_SUCCESS) {
