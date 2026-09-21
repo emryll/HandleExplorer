@@ -84,7 +84,9 @@ func (h cHandleEntry) GoEntry() HandleEntry {
 	entry.Type = h.Type
 	entry.Pid = h.Pid
 
-	if h.ParamsSize == 0 || h.Params == nil || uintptr(h.Params) == ^uintptr(0) {
+	if h.ParamsSize == 0 || h.Params == nil ||
+		uintptr(h.Params) == ^uintptr(0) || h.ParamsSize > MAX_PARAMS_SIZE {
+
 		return entry
 	}
 
