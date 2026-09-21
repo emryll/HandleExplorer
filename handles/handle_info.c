@@ -41,9 +41,68 @@ char* GetObjectName(HANDLE hObject, DWORD objectType) {
         case OBJ_TYPE_DIRECTORY:
         case OBJ_TYPE_IO_COMPLETION:
         case OBJ_TYPE_PIPE:
+            OBJECT_NAME_QUERY query = {0};
+            query.hObject = hObject;
+
             // NtQueryObject, no timeout
-            return GetObjectNameGeneric(hObject);
+            GetObjectNameGeneric(query);
+            return query.out;
     }
 
     return NULL;
+}
+
+char* GetObjectNameGeneric(HANDLE hObject) {
+    if (NtQueryObject == NULL) {
+        NtQueryObject = (NQO)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryObject");
+    }
+
+    size_t initialSize = 1024;
+    size_t bufSize = initialSize;
+    BYTE* buffer = (BYTE*)malloc(bufSize);
+    if (buffer == NULL) return FALSE;
+
+    NTSTATUS status;
+    ULONG returnLen;
+
+    while ((status = NtQueryObject(
+        hObject,
+        ObjectNameInformation,
+        buffer,
+        bufSize,
+        &returnLen
+    )) == STATUS_BUFFER_TOO_SMALL ||
+    status == STATUS_INFO_LENGTH_MISMATCH) {
+
+        bufSize *= 2;
+        buffer = realloc(buffer, bufSize);
+        if (buffer == NULL) return FALSE;
+    }
+
+    if (status != STATUS_SUCCESS) {
+        printf("[dbg] NtQueryObject failed with NTSTATUS %X\n", status);
+        return FALSE;
+    }
+
+    char* name = NULL;
+    POBJECT_NAME_INFORMATION info = (POBJECT_NAME_INFORMATION)buffer;
+
+    if (info->Name.Length > 0 && info->Name.Buffer != NULL) {
+        name = UnicodeToAnsi(info->Name);
+    }
+
+    free(info);
+    return name;
+}
+
+char* GetObjectNameWithTimeout(HANDLE hObject, DWORD dwMilliseconds) {
+    OBJECT_NAME_QUERY query = {0};
+    query.hObject = hObject;
+    HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)GetObjectNameGeneric, &query, 0, NULL);
+    WaitForSingleObject(hThread, dwMilliseconds);
+    return query.out;
+}
+
+void GetObjectName2(OBJECT_NAME_QUERY* query) {
+    query.out = GetObjectNameGeneric(query.hObject)
 }
