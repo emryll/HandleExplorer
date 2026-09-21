@@ -53,27 +53,25 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         return NULL;
     }
     
-    // these are for debugging file handle issue
-    int openProcessFails = 0;
-    int dupHandleFails = 0;
-    int totalFails = 0;
-
+    DbgResetTracker();
     //* main handle table enumeration loop
     for (int i = 0; i < handleTableInformation->NumberOfHandles; i++) {
+        DbgIncrementSeenHandles();
+
         SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleInfo = handleTableInformation->Handles[i];
-        if (handleInfo.ObjectTypeIndex == 37) {
+        /*if (handleInfo.ObjectTypeIndex == 37) {
             printf("\n[1] new handle entry (wintype %d, pid %d)\n",
                 handleInfo.ObjectTypeIndex, handleInfo.UniqueProcessId);
-        }
+        }*/
 
         //TODO: what is process_query_limited_information needed for??
-        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION,
+        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE,
             FALSE, handleInfo.UniqueProcessId);
+            
         if (hProcess == NULL) {
-            if (handleInfo.ObjectTypeIndex == 37) openProcessFails++;
+            DbgAddFail(FAIL_OPEN_PROCESS, handleInfo.UniqueProcessId, handleInfo.ObjectTypeIndex, GetLastError());
             continue;
         }
-        if (handleInfo.ObjectTypeIndex == 37) printf("[2] opened process handle\n");
 
         HANDLE hObject = NULL;
         //TODO: what are the minimum required access rights?
@@ -90,13 +88,11 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
                 printf("unexpected error on DuplicateHandle: %d (windows type index %d)\n",
                     err, handleInfo.ObjectTypeIndex);
             }*/
-            if (handleInfo.ObjectTypeIndex == 37) dupHandleFails++;
-
+            DbgAddFail(FAIL_DUP_HANDLE, handleInfo.UniqueProcessId, handleInfo.ObjectTypeIndex, err);
             CloseHandle(hProcess);
             continue;
         }
         CloseHandle(hProcess);
-        if (handleInfo.ObjectTypeIndex == 37) printf("[3] duplicated handle (raw value %d)\n", handleInfo.HandleValue);
 
         //* create HANDLE_ENTRY
         handleTable = (HANDLE_ENTRY*)realloc(handleTable, ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
@@ -104,14 +100,12 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
             printf("[CRITICAL] Failed to realloc (%dB)\n", ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
         }
 
-        handleTable[*handleCount].Type    = GetHandleObjectType(hObject);
-        if (handleInfo.ObjectTypeIndex == 37) printf("[4] got type id\n");
+        handleTable[*handleCount].Type    = GetHandleObjectTypeEx(hObject, handleInfo.ObjectTypeIndex);
         handleTable[*handleCount].Pid     = handleInfo.UniqueProcessId;
         handleTable[*handleCount].Access  = handleInfo.GrantedAccess;
         handleTable[*handleCount].Handle  = (DWORD)handleInfo.HandleValue;
         handleTable[*handleCount].Address = handleInfo.Object;
         handleTable[*handleCount].Params  = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
-        if (handleInfo.ObjectTypeIndex == 37) printf("[5] got params\n");
 
         if (handleInfo.ObjectTypeIndex == 37 &&
         handleTable[*handleCount].Type != OBJ_TYPE_FILE &&
@@ -122,16 +116,19 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         CloseHandle(hObject);
         (*handleCount)++;
     }
-    printf("\n");
-    printf("[dbg] %d file handles failed at OpenProcess\n", openProcessFails);
-    printf("[dbg] %d file handles failed at DuplicateHandle\n", dupHandleFails);
+    //printf("\n");
     HeapFree(GetProcessHeap(), 0, handleTableInformation);
+
+    DbgPrintFails();
     return handleTable;
 }
 
 // Get packet parameters for a handle event. Remember to free buffer after use.
 BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) {
     BYTE* parameters = NULL;
+
+    //TODO: refactor cleaner, do a generic GetObjectName param, then additional params only if needed
+
     switch (objectType) {
         case OBJ_TYPE_PROCESS: {
         // process id
@@ -283,7 +280,30 @@ BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) 
     return parameters;
 }
 
-DWORD GetHandleObjectType(HANDLE hObject) {
+DWORD GetHandleObjectTypeEx(HANDLE hObject, UCHAR typeWindex) {
+    if (typeWindex == 0) { // the type indexes start at 2 (for some reason)
+        return GetHandleObjectType2(hObject);
+    }
+
+    // cached object type id lookup
+    DWORD id = GetObjectTypeIdFromWindex(typeWindex);
+    if (id == OBJ_TYPE_UNKNOWN) {
+        // Use NtQueryObject ObjectTypeInformation as fallback
+        return GetHandleObjectType2(hObject);
+    }
+
+    if (id == OBJ_TYPE_FILE &&
+        hObject != INVALID_HANDLE_VALUE &&
+        hObject != NULL) {
+        
+        if (GetFileType(hObject) == FILE_TYPE_PIPE) {
+            id = OBJ_TYPE_PIPE;
+        }
+    }
+    return id;
+}
+
+DWORD GetHandleObjectType2(HANDLE hObject) {
     if (NtQueryObject == NULL) {
         NtQueryObject = (NQO)GetProcAddress(GetModuleHandle("ntdll"), "NtQueryObject");
     }
@@ -299,9 +319,18 @@ DWORD GetHandleObjectType(HANDLE hObject) {
         }
         status = NtQueryObject(hObject, ObjectTypeInformation, (PVOID)typeInfo, bufSize, &bufSize);
     }
-    if ((status != STATUS_SUCCESS) || (typeInfo->TypeName.Buffer == NULL) || (typeInfo->TypeName.Length == 0)) {
-        printf("Failed to get object type (status %X)\n", status);
+    if ((status != STATUS_SUCCESS) {
         free(typeInfo);
+        return OBJ_TYPE_UNKNOWN;
+    }
+
+    DWORD id = GetObjectTypeIdFromName(typeInfo->TypeName);
+    free(typeInfo);
+    return id;
+}
+
+DWORD GetObjectTypeIdFromName(UNICODE_STRING name) {
+    if (name.Buffer == NULL || name.Length == 0) {
         return OBJ_TYPE_UNKNOWN;
     }
 
@@ -309,154 +338,147 @@ DWORD GetHandleObjectType(HANDLE hObject) {
     //TODO: also iterate a list instead of this
 
     DWORD type = OBJ_TYPE_UNKNOWN;
-    if (wcscmp(typeInfo->TypeName.Buffer, L"Process") == 0) {
+    if (wcscmp(name.Buffer, L"Process") == 0) {
         type = OBJ_TYPE_PROCESS;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Thread") == 0) {
+    } else if (wcscmp(name.Buffer, L"Thread") == 0) {
         type = OBJ_TYPE_THREAD;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"File") == 0) {
-        printf("[dbg] file handle ");
-        if (GetFileType(hObject) == FILE_TYPE_PIPE) {
-            type = OBJ_TYPE_PIPE;
-            printf("(pipe)\n");
-        } else {
-            type = OBJ_TYPE_FILE;
-            printf("(file)\n");
-        }
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Event") == 0) {
+    } else if (wcscmp(name.Buffer, L"File") == 0) {
+        type = OBJ_TYPE_FILE;
+    } else if (wcscmp(name.Buffer, L"Event") == 0) {
         type = OBJ_TYPE_EVENT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Mutant") == 0) {
+    } else if (wcscmp(name.Buffer, L"Mutant") == 0) {
         type = OBJ_TYPE_MUTANT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Semaphore") == 0) {
+    } else if (wcscmp(name.Buffer, L"Semaphore") == 0) {
         type = OBJ_TYPE_SEMAPHORE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Section") == 0) {
+    } else if (wcscmp(name.Buffer, L"Section") == 0) {
         type = OBJ_TYPE_SECTION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Session") == 0) {
+    } else if (wcscmp(name.Buffer, L"Session") == 0) {
         type = OBJ_TYPE_SESSION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Key") == 0) {
+    } else if (wcscmp(name.Buffer, L"Key") == 0) {
         type = OBJ_TYPE_KEY;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Directory") == 0) {
+    } else if (wcscmp(name.Buffer, L"Directory") == 0) {
         type = OBJ_TYPE_DIRECTORY;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"SymbolicLink") == 0) {
+    } else if (wcscmp(name.Buffer, L"SymbolicLink") == 0) {
         type = OBJ_TYPE_SYMLINK;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Token") == 0) {
+    } else if (wcscmp(name.Buffer, L"Token") == 0) {
         type = OBJ_TYPE_TOKEN;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Job") == 0) {
+    } else if (wcscmp(name.Buffer, L"Job") == 0) {
         type = OBJ_TYPE_JOB;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Device") == 0) {
+    } else if (wcscmp(name.Buffer, L"Device") == 0) {
         type = OBJ_TYPE_DEVICE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Desktop") == 0) {
+    } else if (wcscmp(name.Buffer, L"Desktop") == 0) {
         type = OBJ_TYPE_DESKTOP;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Partition") == 0) {
+    } else if (wcscmp(name.Buffer, L"Partition") == 0) {
         type = OBJ_TYPE_PARTITION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DebugObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DebugObject") == 0) {
         type = OBJ_TYPE_DEBUG_OBJECT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Callback") == 0) {
+    } else if (wcscmp(name.Buffer, L"Callback") == 0) {
         type = OBJ_TYPE_CALLBACK;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Adapter") == 0) {
+    } else if (wcscmp(name.Buffer, L"Adapter") == 0) {
         type = OBJ_TYPE_ADAPTER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Controller") == 0) {
+    } else if (wcscmp(name.Buffer, L"Controller") == 0) {
         type = OBJ_TYPE_CONTROLLER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Device") == 0) {
+    } else if (wcscmp(name.Buffer, L"Device") == 0) {
         type = OBJ_TYPE_DEVICE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Driver") == 0) {
+    } else if (wcscmp(name.Buffer, L"Driver") == 0) {
         type = OBJ_TYPE_DRIVER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"IoRing") == 0) {
+    } else if (wcscmp(name.Buffer, L"IoRing") == 0) {
         type = OBJ_TYPE_IO_RING;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"TmTm") == 0) {
+    } else if (wcscmp(name.Buffer, L"TmTm") == 0) {
         type = OBJ_TYPE_TM_TM;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"TmTx") == 0) {
+    } else if (wcscmp(name.Buffer, L"TmTx") == 0) {
         type = OBJ_TYPE_TM_TX;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"TmRm") == 0) {
+    } else if (wcscmp(name.Buffer, L"TmRm") == 0) {
         type = OBJ_TYPE_TM_RM;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"TmEn") == 0) {
+    } else if (wcscmp(name.Buffer, L"TmEn") == 0) {
         type = OBJ_TYPE_TM_EN;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Timer") == 0) {
+    } else if (wcscmp(name.Buffer, L"Timer") == 0) {
         type = OBJ_TYPE_TIMER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"IRTimer") == 0) {
+    } else if (wcscmp(name.Buffer, L"IRTimer") == 0) {
         type = OBJ_TYPE_IRTIMER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Profile") == 0) {
+    } else if (wcscmp(name.Buffer, L"Profile") == 0) {
         type = OBJ_TYPE_PROFILE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"KeyedEvent") == 0) {
+    } else if (wcscmp(name.Buffer, L"KeyedEvent") == 0) {
         type = OBJ_TYPE_KEYED_EVENT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"WindowStation") == 0) {
+    } else if (wcscmp(name.Buffer, L"WindowStation") == 0) {
         type = OBJ_TYPE_WINDOW_STATION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"Composition") == 0) {
+    } else if (wcscmp(name.Buffer, L"Composition") == 0) {
         type = OBJ_TYPE_COMPOSITION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"RawInputManager") == 0) {
+    } else if (wcscmp(name.Buffer, L"RawInputManager") == 0) {
         type = OBJ_TYPE_RAW_INPUT_MANAGER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"CoreMessaging") == 0) {
+    } else if (wcscmp(name.Buffer, L"CoreMessaging") == 0) {
         type = OBJ_TYPE_CORE_MESSAGING;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"ActivationObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"ActivationObject") == 0) {
         type = OBJ_TYPE_ACTIVATION_OBJECT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"TpWorkerFactory") == 0) {
+    } else if (wcscmp(name.Buffer, L"TpWorkerFactory") == 0) {
         type = OBJ_TYPE_TP_WORKER_FACTORY;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"IoCompletion") == 0) {
+    } else if (wcscmp(name.Buffer, L"IoCompletion") == 0) {
         type = OBJ_TYPE_IO_COMPLETION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"WaitCompletionPacket") == 0) {
+    } else if (wcscmp(name.Buffer, L"WaitCompletionPacket") == 0) {
         type = OBJ_TYPE_WAIT_COMPLETION_PACKET;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"UserApcReserve") == 0) {
+    } else if (wcscmp(name.Buffer, L"UserApcReserve") == 0) {
         type = OBJ_TYPE_USER_APC_RESERVE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"IoCompletionReserve") == 0) {
+    } else if (wcscmp(name.Buffer, L"IoCompletionReserve") == 0) {
         type = OBJ_TYPE_IO_COMP_RESERVE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"ActivityReference") == 0) {
+    } else if (wcscmp(name.Buffer, L"ActivityReference") == 0) {
         type = OBJ_TYPE_ACTIVITY_REFERENCE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"ProcessStateChange") == 0) {
+    } else if (wcscmp(name.Buffer, L"ProcessStateChange") == 0) {
         type = OBJ_TYPE_PS_STATE_CHANGE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"ThreadStateChange") == 0) {
+    } else if (wcscmp(name.Buffer, L"ThreadStateChange") == 0) {
         type = OBJ_TYPE_THREAD_STATE_CHANGE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"CpuPartition") == 0) {
+    } else if (wcscmp(name.Buffer, L"CpuPartition") == 0) {
         type = OBJ_TYPE_CPU_PARTITION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"PsSiloContextPaged") == 0) {
+    } else if (wcscmp(name.Buffer, L"PsSiloContextPaged") == 0) {
         type = OBJ_TYPE_PS_SILO_CTX_PAGED;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"PsSiloContextNonPaged") == 0) {
+    } else if (wcscmp(name.Buffer, L"PsSiloContextNonPaged") == 0) {
         type = OBJ_TYPE_PS_SILO_CTX_NON_PAGED;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"RegistryTransaction") == 0) {
+    } else if (wcscmp(name.Buffer, L"RegistryTransaction") == 0) {
         type = OBJ_TYPE_REGISTRY_TRANSACTION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DmaAdapter") == 0) {
+    } else if (wcscmp(name.Buffer, L"DmaAdapter") == 0) {
         type = OBJ_TYPE_DMA_ADAPTER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"ALPC Port") == 0) {
+    } else if (wcscmp(name.Buffer, L"ALPC Port") == 0) {
         type = OBJ_TYPE_ALPC_PORT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"EnergyTracker") == 0) {
+    } else if (wcscmp(name.Buffer, L"EnergyTracker") == 0) {
         type = OBJ_TYPE_ENERGY_TRACKER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"PowerRequest") == 0) {
+    } else if (wcscmp(name.Buffer, L"PowerRequest") == 0) {
         type = OBJ_TYPE_POWER_REQUEST;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"WmiGuid") == 0) {
+    } else if (wcscmp(name.Buffer, L"WmiGuid") == 0) {
         type = OBJ_TYPE_WMI_GUID;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"EtwRegistration") == 0) {
+    } else if (wcscmp(name.Buffer, L"EtwRegistration") == 0) {
         type = OBJ_TYPE_ETW_REGISTRATION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"EtwSessionDemuxEntry") == 0) {
+    } else if (wcscmp(name.Buffer, L"EtwSessionDemuxEntry") == 0) {
         type = OBJ_TYPE_ETW_SESSION_DEMUX_ENTRY;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"EtwConsumer") == 0) {
+    } else if (wcscmp(name.Buffer, L"EtwConsumer") == 0) {
         type = OBJ_TYPE_ETW_CONSUMER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"PcwObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"PcwObject") == 0) {
         type = OBJ_TYPE_PCW_OBJECT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"CoverageSampler") == 0) {
+    } else if (wcscmp(name.Buffer, L"CoverageSampler") == 0) {
         type = OBJ_TYPE_COVERAGE_SAMPLER;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"FilterConnectionPort") == 0) {
+    } else if (wcscmp(name.Buffer, L"FilterConnectionPort") == 0) {
         type = OBJ_TYPE_FILTER_CONNECTION_PORT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"FilterCommunicationPort") == 0) {
+    } else if (wcscmp(name.Buffer, L"FilterCommunicationPort") == 0) {
         type = OBJ_TYPE_FILTER_COMM_PORT;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"NdisCmState") == 0) {
+    } else if (wcscmp(name.Buffer, L"NdisCmState") == 0) {
         type = OBJ_TYPE_NDIS_CM_STATE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedResource") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedResource") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_RSRC;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedKeyedMutexObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedKeyedMutexObject") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_MUTEX;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedSyncObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedSyncObject") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_SYNC;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedSwapChainObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedSwapChainObject") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_SWAP;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkDisplayManagerObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkDisplayManagerObject") == 0) {
         type = OBJ_TYPE_DXGK_DISPLAY_MGR;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedProtectedSessionObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedProtectedSessionObject") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_SESSION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkSharedBundleObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkSharedBundleObject") == 0) {
         type = OBJ_TYPE_DXGK_SHARED_BUNDLE;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkCompositionObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkCompositionObject") == 0) {
         type = OBJ_TYPE_DXGK_COMPOSITION;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"DxgkCurrentDxgThreadObject") == 0) {
+    } else if (wcscmp(name.Buffer, L"DxgkCurrentDxgThreadObject") == 0) {
         type = OBJ_TYPE_DXGK_CURRENT_DXG_THREAD;
-    } else if (wcscmp(typeInfo->TypeName.Buffer, L"VRegConfigurationContext") == 0) {
+    } else if (wcscmp(name.Buffer, L"VRegConfigurationContext") == 0) {
         type = OBJ_TYPE_V_REG_CONFIG_CONTEXT;
     }
 
