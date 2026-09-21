@@ -1,4 +1,5 @@
-#include <map>
+#include <unordered_map>
+#include <mutex>
 #include <windows.h>
 #include <stdio.h>
 #include "handles.h"
@@ -16,8 +17,9 @@
 //?      as is done in the System Informer project, via cache.    |
 //?===============================================================+
 
-static BOOLEAN ObjectTypeLookupInitialized;
-static std::map<DWORD, DWORD> ObjectTypeLookupTable;
+static NTSTATUS ObjectTypeLookupInitStatus;
+static std::once_flag ObjectTypeLookupOnceFlag;
+static std::unordered_map<DWORD, DWORD> ObjectTypeLookupTable;
 
 extern "C" {
     // Convert the unstable Windows internal
@@ -30,13 +32,14 @@ extern "C" {
     // :param typeWindex:  Windows internal object type index
     // :return:            Own stable object type id
     DWORD GetObjectTypeIdFromWindex(DWORD typeWindex) {
-        if (!ObjectTypeLookupInitialized) {
+        //* make sure lookup is initialized (thread-safe)
+        std::call_once(ObjectTypeLookupOnceFlag, []() {
             NTSTATUS status = FillObjectTypeLookupTable();
+            ObjectTypeLookupInitStatus = status;
             if (status != STATUS_SUCCESS) {
                 printf("[FATAL] Failed to initialize type lookup, NTSTATUS 0x%X\n", status);
-                return 0;
             }
-        }
+        });
         
         auto it = ObjectTypeLookupTable.find(typeWindex);
         if (it != ObjectTypeLookupTable.end()) {
@@ -63,7 +66,6 @@ extern "C" {
             type = NEXT_OBJECT_TYPE(type);
         }
 
-        ObjectTypeLookupInitialized = TRUE;
         HeapFree(GetProcessHeap(), 0, typesInfo);
         return status;
     }
