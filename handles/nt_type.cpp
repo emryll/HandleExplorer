@@ -1,5 +1,6 @@
 #include <unordered_map>
 #include <mutex>
+#include <ntstatus.h>
 #include <windows.h>
 #include <stdio.h>
 #include "handles.h"
@@ -56,7 +57,7 @@ extern "C" {
             return status;
         }
 
-        POBJECT_TYPE_INFORMATION type = FIRST_OBJECT_TYPE(typesInfo);
+        POBJECT_TYPE_INFORMATION2 type = FIRST_OBJECT_TYPE(typesInfo);
         for (ULONG i = 0; i < typesInfo->NumberOfTypes; i++) {
             DWORD id = GetObjectTypeIdFromName(type->TypeName);
             if (id != OBJ_TYPE_UNKNOWN) {
@@ -73,6 +74,9 @@ extern "C" {
     // Wrapper to call NtQueryObject with ObjectTypesInformation.
     // Caller must free the result with HeapFree if status is STATUS_SUCCESS.
     NTSTATUS GetHandleTypesInformation(POBJECT_TYPES_INFORMATION* out) {
+        if (NtQueryObject == NULL) {
+            NtQueryObject = (NQO)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryObject");
+        }
         ULONG bufferSize = 0x1000;
         ULONG returnLength;
         NTSTATUS status;
