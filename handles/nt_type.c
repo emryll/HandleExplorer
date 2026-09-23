@@ -214,6 +214,8 @@ DWORD GetObjectTypeIdFromName(UNICODE_STRING name) {
         type = OBJ_TYPE_DXGK_CURRENT_DXG_THREAD;
     } else if (wcscmp(name.Buffer, L"VRegConfigurationContext") == 0) {
         type = OBJ_TYPE_V_REG_CONFIG_CONTEXT;
+    } else if (wcscmp(name.Buffer, L"Type") == 0) {
+        type = OBJ_TYPE_TYPE;
     }
 
     if (type == OBJ_TYPE_UNKNOWN) {
