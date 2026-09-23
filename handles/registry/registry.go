@@ -33,6 +33,9 @@ func (reg *ObjectAccessRegistry) AddEntryRaw(entry AccessEntry) {
 	if reg.ObjectLookup[entry.Object] == nil {
 		reg.ObjectLookup[entry.Object] = make(map[ObjectAccessKey][]*AccessEntry)
 	}
+	if reg.AddressLookup == nil {
+		reg.AddressLookup = make(map[uintptr]map[uint32][]*AccessEntry)
+	}
 	if reg.AddressLookup[entry.Address] == nil {
 		reg.AddressLookup[entry.Address] = make(map[uint32][]*AccessEntry)
 	}
