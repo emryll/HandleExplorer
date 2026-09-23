@@ -189,6 +189,23 @@ func (reg *ObjectAccessRegistry) FindByObject(objectType []uint32, access utils.
 	return result
 }
 
+func (reg *ObjectAccessRegistry) FindObjectByAddress(address uintptr) *AccessEntry {
+	if len(reg.AddressLookup) == 0 || len(reg.AddressLookup[address]) == 0 {
+		return nil
+	}
+
+	var sample *AccessEntry
+	for _, entries := range reg.AddressLookup[address] {
+		for _, entry := range entries {
+			sample = entry
+			if entry.Object != 0 && !utils.IsEmptyName(entry.Name) {
+				break
+			}
+		}
+	}
+	return sample
+}
+
 func (entry *AccessEntry) CreateObjectKey() ObjectAccessKey {
 	return ObjectAccessKey{Name: entry.Name, Pid: entry.Pid}
 }
