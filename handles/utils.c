@@ -142,3 +142,40 @@ char* UnicodeToAnsi(UNICODE_STRING ustr) {
     out[charCount] = '\0';
     return out;
 }
+
+char* NtPathToDosPathA(const char* ntPath) {
+    char drives[512];
+    char *drive;
+
+    if (!ntPath || !GetLogicalDriveStringsA(sizeof(drives), drives)) {
+        return NULL;
+    }
+
+    for (drive = drives; *drive; drive += strlen(drive) + 1) {
+        char device[3] = { drive[0], drive[1], '\0' };
+        char target[MAX_PATH];
+        size_t targetLen;
+        char next;
+
+        if (!QueryDosDeviceA(device, target, sizeof(target)))
+            continue;
+
+        targetLen = strlen(target);
+        if (_strnicmp(ntPath, target, targetLen) != 0)
+            continue;
+
+        next = ntPath[targetLen];
+        if (next != '\\' && next != '\0') continue;
+
+        const char *remainder = ntPath + targetLen;
+        size_t len = strlen(device) + strlen(remainder) + 1;
+        char *result = malloc(len);
+        if (!result)
+            return NULL;
+
+        snprintf(result, len, "%s%s", device, remainder);
+        return result;
+    }
+
+    return NULL; // no matching drive
+}
