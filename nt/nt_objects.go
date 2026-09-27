@@ -2,11 +2,11 @@ package nt
 
 import "HandleExplorer/utils"
 
-//?========================================================================+
-//?   This file contains the NT object type to internal enum conversions.  |
-//?    The object type enums used internally in Windows are not stable.    |
-//?      This is why NtQueryObject returns a string, the NT name           |
-//?========================================================================+
+//?=========================================================================+
+//?   This file has the NT object type name <-> internal enum conversions.  |
+//?    The object type enums used internally in Windows are not stable.     |
+//?      This is why NtQueryObject returns a string, the NT name            |
+//?=========================================================================+
 
 // Get the domain id for an object type.
 // This is used to translate access mask
@@ -121,6 +121,7 @@ const (
 	OBJ_TYPE_V_REG_CONFIG_CONTEXT    = 69
 	OBJ_TYPE_PARTITION               = 70
 	OBJ_TYPE_DXGK_CURRENT_DXG_THREAD = 71
+	OBJ_TYPE_TYPE                    = 72
 )
 
 // Translate internal object type enum into name.
@@ -266,6 +267,8 @@ func GetTypeName(object uint32) string {
 		return "DxgkCurrentDxgThreadObject"
 	case OBJ_TYPE_V_REG_CONFIG_CONTEXT:
 		return "VRegConfigurationContext"
+	case OBJ_TYPE_TYPE:
+		return "Type"
 	}
 	return "(unknown)"
 }
@@ -317,6 +320,8 @@ func GetTypeIdentifier(object string) uint32 {
 		return OBJ_TYPE_DRIVER
 	case "IoRing":
 		return OBJ_TYPE_IO_RING
+	case "Type":
+		return OBJ_TYPE_TYPE
 	case "TmTm":
 		return OBJ_TYPE_TM_TM
 	case "TmTx":
