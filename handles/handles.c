@@ -31,12 +31,12 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         GetProcessHeap(), HEAP_ZERO_MEMORY, bufferSize);
     
     //* Query the global handle table
-    while (status = NtQuerySystemInformation(
+    while ((status = NtQuerySystemInformation(
         SystemExtendedHandleInformation,
         handleTableInformation,
         bufferSize,
         &returnLenght
-        ) == STATUS_INFO_LENGTH_MISMATCH) {
+        )) == STATUS_INFO_LENGTH_MISMATCH) {
             HeapFree(GetProcessHeap(), 0, handleTableInformation);
             bufferSize *= 2;
 
@@ -53,104 +53,105 @@ HANDLE_ENTRY* GetGlobalHandleTable(size_t* handleCount) {
         return NULL;
     }
     
-    DbgResetTracker();
+    *handleCount = handleTableInformation->NumberOfHandles;
+    size_t tableSize = (*handleCount) * sizeof(HANDLE_ENTRY);
+    handleTable = HeapAlloc((HANDLE_ENTRY*)GetProcessHeap(), HEAP_ZERO_MEMORY, tableSize);
+
+    HP_WORK_POOL HpWorkPool = {0};
+    if (!InitHpWorkPoolEx(&HpWorkPool, HP_WORKER_COUNT)) {
+        printf("[FATAL] Failed to initialize work pool\n");
+        //TODO: handle this properly with fallback
+    }
+
     //* main handle table enumeration loop
     for (int i = 0; i < handleTableInformation->NumberOfHandles; i++) {
-        DbgIncrementSeenHandles();
 
         SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX handleInfo = handleTableInformation->Handles[i];
-        /*if (handleInfo.ObjectTypeIndex == 37) {
-            printf("\n[1] new handle entry (wintype %d, pid %d)\n",
-                handleInfo.ObjectTypeIndex, handleInfo.UniqueProcessId);
-        }*/
 
-        //TODO: what is process_query_limited_information needed for??
-        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE,
-            FALSE, handleInfo.UniqueProcessId);
+        DWORD pid = handleInfo.UniqueProcessId;
+        HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
             
-        if (hProcess == NULL) {
-            DbgAddFail(FAIL_OPEN_PROCESS, handleInfo.UniqueProcessId, handleInfo.ObjectTypeIndex, GetLastError());
-            continue;
-        }
-
         HANDLE hObject = NULL;
         //TODO: what are the minimum required access rights?
         //TODO: try setting it as 0 default, but query_limited_information for thread or process
         //* Duplicate handle to query information about the object
         //DWORD access = STANDARD_RIGHTS_REQUIRED | GENERIC_READ;
         DWORD access = DUPLICATE_SAME_ACCESS;
-        if (!DuplicateHandle(hProcess, (HANDLE)(DWORD_PTR)handleInfo.HandleValue,
-                GetCurrentProcess(), &hObject, access, FALSE, 0)) {
-            DWORD err = GetLastError();
-            if (err != ERROR_ACCESS_DENIED && err != ERROR_NOT_SUPPORTED && err != ERROR_INVALID_HANDLE) {
-                printf("Failed to duplicate handle, error: %d\n", err);
-            }/* else if (handleInfo.ObjectTypeIndex != 50) {
-                printf("unexpected error on DuplicateHandle: %d (windows type index %d)\n",
-                    err, handleInfo.ObjectTypeIndex);
-            }*/
-            DbgAddFail(FAIL_DUP_HANDLE, handleInfo.UniqueProcessId, handleInfo.ObjectTypeIndex, err);
+        if (hProcess != NULL) {
+            DuplicateHandle(hProcess, (HANDLE)(DWORD_PTR)handleInfo.HandleValue,
+                    GetCurrentProcess(), &hObject, access, FALSE, 0);
+                
             CloseHandle(hProcess);
-            continue;
-        }
-        CloseHandle(hProcess);
-
-        //* create HANDLE_ENTRY
-        handleTable = (HANDLE_ENTRY*)realloc(handleTable, ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
-        if (handleTable == NULL) {
-            printf("[CRITICAL] Failed to realloc (%dB)\n", ((*handleCount) + 1) * sizeof(HANDLE_ENTRY));
         }
 
-        handleTable[*handleCount].Type    = GetHandleObjectTypeEx(hObject, handleInfo.ObjectTypeIndex);
-        handleTable[*handleCount].Pid     = handleInfo.UniqueProcessId;
-        handleTable[*handleCount].Access  = handleInfo.GrantedAccess;
-        handleTable[*handleCount].Handle  = (DWORD)handleInfo.HandleValue;
-        handleTable[*handleCount].Address = handleInfo.Object;
-        handleTable[*handleCount].Params  = GetHandleParameters(hObject, handleTable[*handleCount].Type, &handleTable[*handleCount].paramsSize);
+        handleTable[i].Type    = GetHandleObjectTypeEx(hObject, handleInfo.ObjectTypeIndex);
+        handleTable[i].Pid     = handleInfo.UniqueProcessId;
+        handleTable[i].Access  = handleInfo.GrantedAccess;
+        handleTable[i].Handle  = (DWORD)handleInfo.HandleValue;
+        handleTable[i].Address = handleInfo.Object;
 
-        if (handleInfo.ObjectTypeIndex == 37 &&
-        handleTable[*handleCount].Type != OBJ_TYPE_FILE &&
-        handleTable[*handleCount].Type != OBJ_TYPE_PIPE) {
-            printf("\n[dbg] id mismatch!!!!! (file as %d)", handleTable[*handleCount].Type);
+        //? This will fill the parameters for the handle entry
+        //? and close the handle once finished (see work_pool.c)
+        if (handleTable[i].Type == OBJ_TYPE_FILE || handleTable[i].Type == OBJ_TYPE_PIPE) {
+            CreateHpTask(HpWorkPool.Queue, hObject, &handleTable[i]);
+        } else {
+            handleTable[i].Params = GetHandleParameters(
+                hObject, handleTable[i].Type, &handleTable[i].paramsSize);
+            CloseHandle(hObject);
         }
-
-        CloseHandle(hObject);
-        (*handleCount)++;
     }
     //printf("\n");
     HeapFree(GetProcessHeap(), 0, handleTableInformation);
+    HpWorkPoolShutdownAndWait(&HpWorkPool);
 
-    DbgPrintFails();
     return handleTable;
 }
 
 // Get packet parameters for a handle event. Remember to free buffer after use.
 BYTE* GetHandleParameters(HANDLE hObject, DWORD objectType, size_t* paramsSize) {
     BYTE* parameters = NULL;
+    *paramsSize = 0;
 
-    size_t nameParamSize;
+    size_t nameParamSize = 0;
     BYTE* nameParam = GetObjectNameParameter(
             hObject, objectType, &nameParamSize);
-    *paramsSize += nameParamSize;
 
     if (nameParam != NULL) {
-        parameters = nameParam;
+        *paramsSize += nameParamSize;
     }
 
-    size_t extraParamsSize;
+    size_t extraParamsSize = 0;
     BYTE* extraParams = NULL;
 
     switch (objectType) {
         case OBJ_TYPE_PROCESS:
             extraParams = GetProcessObjectExtraParams(hObject, &extraParamsSize);
+            break;
         case OBJ_TYPE_THREAD:
             extraParams = GetThreadObjectExtraParams(hObject, &extraParamsSize);
+            break;
     }
 
     if (extraParams != NULL) {
-        memcpy(parameters + nameParamSize,
-                extraParams, extraParamsSize);
-        free(extraParams);
-    }
+        *paramsSize += extraParamsSize;
 
-    return parameters;
+        if (nameParam == NULL) {
+            return extraParams;
+        }
+
+        parameters = malloc(*paramsSize);
+        memcpy(parameters, nameParam, nameParamSize);
+        memcpy(parameters + nameParamSize, extraParams, extraParamsSize);
+        
+        free(nameParam);
+        free(extraParams);
+        return parameters;
+
+    } else {
+        return nameParam;
+    }
+}
+
+void FreeHandleTable(HANDLE_ENTRY* handleTable) {
+    HeapFree(GetProcessHeap(), 0, handleTable);
 }
