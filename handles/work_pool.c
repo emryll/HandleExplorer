@@ -123,3 +123,37 @@ void QueueShutdown(HP_TASK_QUEUE* q) {
     LeaveCriticalSection(&q->Lock);
     WakeAllConditionVariable(&q->NotEmpty);
 }
+
+//*========================[ Worker Pool ]======================
+
+void HpWorkPoolShutdownAndWait(HP_WORK_POOL* pool) {
+    QueueShutdown(pool->Queue);
+    WaitForMultipleObjects(pool->ThreadCount, pool->Threads, TRUE, INFINITE);
+
+    for (DWORD i = 0; i < pool->ThreadCount; i++) {
+        CloseHandle(pool->Threads[i]);
+    }
+    free(pool->Threads);
+}
+
+BOOL InitHpWorkPool(HP_WORK_POOL* pool, HP_TASK_QUEUE* queue, DWORD threadCount) {
+    if (pool == NULL || queue == NULL || threadCount == 0) return FALSE;
+
+    pool->Queue = queue;
+    pool->Threads = (HANDLE*)malloc(sizeof(HANDLE) * threadCount);
+    pool->ThreadCount = threadCount;
+
+    if (!pool->Threads) return FALSE;
+
+    for (DWORD i = 0; i < threadCount; i++) {
+        pool->Threads[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)HParamWorker, queue, 0, NULL);
+    }
+    return TRUE;
+}
+
+BOOL InitHpWorkPoolEx(HP_WORK_POOL* pool, DWORD threadCount) {
+    HP_TASK_QUEUE* queue = (HP_TASK_QUEUE*)malloc(sizeof(HP_TASK_QUEUE));
+    InitializeHpQueue(queue);
+
+    return InitHpWorkPool(pool, queue, threadCount);
+}
