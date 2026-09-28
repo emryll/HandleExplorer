@@ -42,3 +42,84 @@ DWORD WINAPI HParamWorker(HP_TASK_QUEUE* queue) {
 
     return 0;
 }
+
+//*=========================[ Task Queue ]=========================
+
+// Create a handle parameter query task and add it to the queue.
+// If task creation and queueing succeeds, the return value is TRUE.
+BOOL CreateHpTask(HP_TASK_QUEUE* q, HANDLE hObject, HANDLE_ENTRY* entry) {
+    HPARAM_TASK* task = (HPARAM_TASK*)malloc(sizeof(HPARAM_TASK));
+    if (!task) return FALSE;
+
+    task->hObject    = hObject;
+    task->entry      = entry;
+
+    return AddTaskToQueue(q, task);
+}
+
+// Add a task to the task queue. Should always succeed,
+// aside from OOM. The queue never rejects tasks itself.
+// If the operation fails, the return value is FALSE.
+BOOL AddTaskToQueue(HP_TASK_QUEUE* q, HPARAM_TASK* task) {
+    HP_QUEUE_NODE* node = (HP_QUEUE_NODE*)malloc(sizeof(HP_QUEUE_NODE));
+    if (node == NULL) return FALSE;
+
+    node->Task = task;
+    node->Next = NULL;
+
+    EnterCriticalSection(&q->Lock);
+    if (q->Tail) {
+        q->Tail->Next = node;
+    } else {
+        q->Head = node;
+    }
+    q->Tail = node;
+    InterlockedIncrement(&q->Count);
+    LeaveCriticalSection(&q->Lock);
+
+    // wake exactly one idle worker
+    WakeConditionVariable(&q->NotEmpty);
+    return TRUE;
+}
+
+// Get a task from the work queue. Thread-safe.
+// Blocks until a task is available or shutdown is signaled.
+// If the operation fails, the return value is FALSE.
+BOOL GetTaskFromQueue(HP_TASK_QUEUE* q, HPARAM_TASK** out) {
+    EnterCriticalSection(&q->Lock);
+    while (q->Head == NULL && !q->ShuttingDown) {
+        SleepConditionVariableCS(&q->NotEmpty, &q->Lock, INFINITE);
+    }
+
+    if (q->Head == NULL) { // shutting down and drained
+        LeaveCriticalSection(&q->Lock);
+        return FALSE;
+    }
+
+    HP_QUEUE_NODE* node = q->Head;
+    q->Head = node->Next;
+    if (!q->Head) q->Tail = NULL;
+
+    InterlockedDecrement(&q->Count);
+    LeaveCriticalSection(&q->Lock);
+
+    *out = node->Task;
+    free(node);
+    return TRUE;
+}
+
+void InitializeHpQueue(HP_TASK_QUEUE* q) {
+    InitializeCriticalSection(&q->Lock);
+    InitializeConditionVariable(&q->NotEmpty);
+
+    q->ShuttingDown = FALSE;
+    q->Head = q->Tail = NULL;
+    q->Count = 0;
+}
+
+void QueueShutdown(HP_TASK_QUEUE* q) {
+    EnterCriticalSection(&q->Lock);
+    q->ShuttingDown = TRUE;
+    LeaveCriticalSection(&q->Lock);
+    WakeAllConditionVariable(&q->NotEmpty);
+}
