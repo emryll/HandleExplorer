@@ -92,14 +92,12 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter *ClusterFilter, pathLook
 	reg.RLock()
 	defer reg.RUnlock()
 
-	if filter == nil {
+	if filter == nil { // avoid nil panic
 		filter = &ClusterFilter{}
 	}
 
 	var (
-		total       int // total size of clusters (for avg)
 		overlapping []*Cluster
-		accessed    = make(map[ProcessAccessKey][]uint32)
 		stats       = ClusterStats{
 			DirFrequency: make(map[string]int),
 			ExeFrequency: make(map[string]int),
@@ -107,48 +105,49 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter *ClusterFilter, pathLook
 		}
 	)
 
-	for pid, objs := range reg.ProcessLookup {
-		for key := range objs {
-			if filter.ObjType != 0 && key.ObjType != filter.ObjType {
-				continue
-			}
-			if key.Name == "" {
-				continue // cant track anon objects currently :(
-			}
-			if filter.ObjName != "" && key.Name != filter.ObjName {
-				continue
-			}
-			accessed[key] = append(accessed[key], pid)
-		}
-	}
-
-	for key, pids := range accessed {
-		if len(pids) < 2 {
+	for address, accessingProcessesMap := range reg.AddressLookup {
+		if len(accessingProcessesMap) < 2 {
 			continue
 		}
-		if filter.MinSize > 0 && len(pids) < filter.MinSize {
+		if filter.MinSize != 0 && len(accessingProcessesMap) < filter.MinSize {
 			continue
 		}
 
-		cluster := Cluster{
-			ObjType: key.ObjType,
-			ObjName: key.Name,
-		}
-		cluster.Members = append(cluster.Members, pids...)
-		overlapping = append(overlapping, &cluster)
-
-		// collect data for cluster stats
-		for _, pid := range pids {
+		var (
+			cluster Cluster
+			sample  AccessEntry
+		)
+		//* collect cluster members + sample entry + stats
+		for pid, entries := range accessingProcessesMap {
+			cluster.Members = append(cluster.Members, pid)
+			// add entry to stats
 			path := pathLookup(pid)
-			if path != "" {
-				stats.ExeFrequency[path]++
+			stats.DirFrequency[filepath.Dir(path)]++
+			stats.ExeFrequency[path]++
+			stats.TotalCount++
+
+			if cluster.ObjType != 0 && !utils.IsEmptyName(cluster.ObjName) {
+				continue
 			}
-			if filepath.Base(path) != path {
-				stats.DirFrequency[filepath.Dir(path)]++
+
+			// save object information from sample
+			for _, entry := range entries {
+				sample.Object = entry.Object
+				sample.Name = entry.Name
 			}
 		}
-		stats.ObjFrequency[key.ObjType]++
-		total += len(cluster.Members)
+
+		if filter.ObjName != "" && sample.Name != filter.ObjName {
+			continue
+		}
+		if filter.ObjType != 0 && sample.Object != filter.ObjType {
+			continue
+		}
+
+		cluster.Address = address
+		cluster.ObjName = sample.Name
+		cluster.ObjType = sample.Object
+		overlapping = append(overlapping, &cluster)
 	}
 
 	// avoid out of bounds panic
@@ -170,7 +169,7 @@ func (reg *ObjectAccessRegistry) FindOverlapping(filter *ClusterFilter, pathLook
 		midIndex := len(overlapping) / 2
 		stats.MedianSize = float32(len(overlapping[midIndex].Members))
 	}
-	stats.AvgSize = float32(total) / float32(len(overlapping))
+	stats.AvgSize = float32(stats.TotalCount) / float32(len(overlapping))
 	return overlapping, stats
 }
 
@@ -214,7 +213,7 @@ func (e *AccessEntryView) Fields() []string {
 
 	var entryName string
 	switch e.Entry.Object {
-	case nt.OBJ_TYPE_PROCESS, nt.OBJ_TYPE_THREAD:
+	case nt.OBJ_TYPE_PROCESS, nt.OBJ_TYPE_THREAD, nt.OBJ_TYPE_FILE, nt.OBJ_TYPE_DIRECTORY:
 		entryName = utils.OrUnknown2(e.Entry.Name)
 	default:
 		entryName = utils.OrAnon2(e.Entry.Name)
