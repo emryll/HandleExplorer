@@ -172,23 +172,27 @@ func PrintProcessByPid(w io.Writer, pid uint32) {
 	PrintProcess(w, ps)
 }
 
-func PrintObject(w io.Writer, objType uint32, name string) {
+func PrintObject(w io.Writer, address uintptr) {
 	if w == nil {
 		w = os.Stdout
 	}
 
-	if name == "" {
-		fmt.Fprintln(w, "Anonymous objects can't be tracked in the current version. :-/")
-		fmt.Fprintln(w, "Sorry about that... Better object tracking will be added in the next version.")
-		return
-	}
-
 	yellow := color.New(color.FgHiYellow)
 
-	yellow.Fprintf(w, "%s", nt.GetTypeName(objType))
-	fmt.Fprintf(w, " %s\n\n", utils.OrAnon(name))
+	//TODO: find the entry
+	store.AccessTracker.AccessRegistry.RLock()
+	sampleEntry := store.AccessTracker.AccessRegistry.FindObjectByAddress(address)
+	store.AccessTracker.AccessRegistry.RUnlock()
+	if sampleEntry == nil {
+		utils.PrintError(nil, "Failed to find object (0x%x)\n", address)
+	}
 
-	pids := store.AccessTracker.GetObjectAccessPids(objType, name)
+	yellow.Fprintf(w, "%s", nt.GetTypeName(sampleEntry.Object))
+	fmt.Fprintf(w, " %s\n", utils.OrAnon(sampleEntry.Name))
+	fmt.Fprintf(w, "object address: 0x")
+	yellow.Fprintf(w, "%x\n\n", address)
+
+	pids := store.AccessTracker.GetObjectAccessPids(address)
 	if len(pids) == 0 {
 		fmt.Fprintln(w, "object not accessible by any processes")
 		return
@@ -199,7 +203,7 @@ func PrintObject(w io.Writer, objType uint32, name string) {
 	fmt.Fprintln(w, " processes")
 
 	fmt.Fprintln(w, "\naccess distribution:")
-	PrintAccessDistribution(w, objType, name)
+	PrintAccessDistribution(w, address)
 	fmt.Fprintln(w)
 }
 
@@ -233,7 +237,7 @@ func PrintAccessEntry(w io.Writer, e *registry.AccessEntry) {
 	}
 
 	fmt.Fprintln(w)
-	PrintObject(w, e.Object, e.Name)
+	PrintObject(w, e.Address)
 	fmt.Fprintln(w)
 }
 
@@ -284,7 +288,7 @@ func PrintCluster(w io.Writer, c *registry.Cluster) {
 	}
 	PrintPathDistribution(w, frequencyTable)
 	fmt.Println()
-	PrintObject(w, c.ObjType, c.ObjName)
+	PrintObject(w, c.Address)
 }
 
 func PrintClusterStats(w io.Writer, s *registry.ClusterStats) {
@@ -402,7 +406,7 @@ func PrintPathDistribution(w io.Writer, frequencies map[string]int) {
 	}
 }
 
-func PrintHandleDistribution(w io.Writer, handlesByType map[string]int) {
+func PrintHandleDistribution(w io.Writer, handlesByType map[uint32]int) {
 	if w == nil {
 		w = os.Stdout
 	}
@@ -413,29 +417,27 @@ func PrintHandleDistribution(w io.Writer, handlesByType map[string]int) {
 
 	entries := make([]dataEntry, len(handlesByType))
 	for objType, count := range handlesByType {
-		entries = append(entries, dataEntry{name: objType, value: count})
+		entries = append(entries, dataEntry{name: nt.GetTypeName(objType), value: count})
 	}
 
 	PrintHistogram(w, entries)
 }
 
 // Print the access distribution chart of a named object.
-func PrintAccessDistribution(w io.Writer, objType uint32, name string) {
-	if name == "" {
+func PrintAccessDistribution(w io.Writer, address uintptr) {
+	if address == uintptr(0) {
 		return
 	}
 
 	store.AccessTracker.AccessRegistry.RLock()
-	if len(store.AccessTracker.AccessRegistry.ObjectLookup[objType]) == 0 {
+	if len(store.AccessTracker.AccessRegistry.AddressLookup[address]) == 0 {
 		store.AccessTracker.AccessRegistry.RUnlock()
 		return
 	}
 
+	ar := store.AccessTracker.AccessRegistry
 	accessLevels := make(map[string]int) // key: access flag, value: count
-	for key, entries := range store.AccessTracker.AccessRegistry.ObjectLookup[objType] {
-		if key.Name != name {
-			continue
-		}
+	for _, entries := range ar.AddressLookup[address] {
 		for _, entry := range entries {
 			flags := entry.GetAccessFlagsAsString()
 			for _, flag := range flags {
