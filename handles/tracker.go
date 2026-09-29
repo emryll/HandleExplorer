@@ -39,26 +39,27 @@ func (at *AccessTracker) Search(f HandleFilter) []*registry.AccessEntry {
 }
 
 // Get all pids that accessed a named object.
-func (at *AccessTracker) GetObjectAccessPids(objType uint32, name string) []uint32 {
+func (at *AccessTracker) GetObjectAccessPids(address uintptr) []uint32 {
 	at.AccessRegistry.Lock()
 	defer at.AccessRegistry.Unlock()
 
-	if len(at.AccessRegistry.ObjectLookup[objType]) == 0 {
+	if len(at.AccessRegistry.AddressLookup) == 0 {
 		return nil
 	}
+	if len(at.AccessRegistry.AddressLookup[address]) == 0 {
+		return nil
+	}
+
 	var (
 		pids []uint32
 		seen = make(map[uint32]bool)
 	)
-	for key := range at.AccessRegistry.ObjectLookup[objType] {
-		if key.Name != name {
+	for pid := range at.AccessRegistry.AddressLookup[address] {
+		if seen[pid] {
 			continue
 		}
-		if seen[key.Pid] {
-			continue
-		}
-		pids = append(pids, key.Pid)
-		seen[key.Pid] = true
+		pids = append(pids, pid)
+		seen[pid] = true
 	}
 	return pids
 }
