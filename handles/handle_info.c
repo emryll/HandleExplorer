@@ -1,6 +1,53 @@
+#include <stdio.h>
 #include <windows.h>
-#include <handles.h>
+#include <ntstatus.h>
+#include "handles.h"
 
+//?===================================================================+
+//?    This file defines object information queries for handles.      |
+//?===================================================================+
+
+//? The outer functions to use for name query are:
+//?   GetObjectName            * just get the name
+//?   GetObjectNameParameter   * get name as parameter ready for packet
+
+
+BYTE* GetProcessObjectExtraParams(HANDLE hProcess, size_t* paramsSize) {
+    //? currently just pid is taken at this point
+    //? other details are retrieved in Go later in the code
+
+    DWORD pid = GetProcessId(hProcess);
+    return BuildParameter(paramsSize, PARAMETER_UINT32, "Pid", pid);
+}
+
+BYTE* GetThreadObjectExtraParams(HANDLE hThread, size_t* paramsSize) {
+    size_t tidParamSize;
+    size_t pidParamSize;
+    *paramsSize = 0;
+
+    DWORD tid = GetThreadId(hThread);
+    BYTE* tidParam = BuildParameter(&tidParamSize, PARAMETER_UINT32, "Tid", tid);
+
+    DWORD pid = GetProcessIdOfThread(hThread);
+    BYTE* pidParam = BuildParameter(&pidParamSize, PARAMETER_UINT32, "Pid",pid);
+
+    if (pidParam != NULL && tidParam != NULL) {
+        BYTE* parameters = (BYTE*)malloc(tidParamSize + pidParamSize);
+
+        memcpy(parameters, tidParam, tidParamSize);
+        memcpy(parameters + tidParamSize, pidParam, pidParamSize);
+        return parameters;
+
+    } else if (pidParam != NULL) {
+        return pidParam;
+
+    } else {
+        // doesnt matter if NULL
+        return tidParam;
+    }
+}
+
+//*=========================[ Object Name Information ]==========================
 
 BYTE* GetObjectNameParameter(HANDLE hObject, DWORD objectType, size_t* paramSize) {
     char* name = GetObjectName(hObject, objectType);
@@ -13,23 +60,30 @@ BYTE* GetObjectNameParameter(HANDLE hObject, DWORD objectType, size_t* paramSize
 }
 
 char* GetObjectName(HANDLE hObject, DWORD objectType) {
+    if (hObject == NULL || hObject == INVALID_HANDLE_VALUE) return NULL;
+    
     switch (objectType) {
         case OBJ_TYPE_PROCESS:
             return GetProcessImagePath(hObject);
+            break;
 
         case OBJ_TYPE_SYMLINK:
             return GetSymlinkTarget(hObject);
+            break;
 
+        case OBJ_TYPE_PIPE:
         case OBJ_TYPE_FILE:
-            //TODO: try what diversenok suggested
             return GetFileObjectName(hObject);
+            break;
 
-        case OBJ_TYPE_ALPC_PORT:
+        /*case OBJ_TYPE_ALPC_PORT:
             return GetAlpcPortName(hObject);
+            break;*/
 
         case OBJ_TYPE_DESKTOP:
         case OBJ_TYPE_WINDOW_STATION:
             return GetWinstaOrDesktopName(hObject);
+            break;
 
         case OBJ_TYPE_JOB:
         case OBJ_TYPE_TIMER:
@@ -40,13 +94,8 @@ char* GetObjectName(HANDLE hObject, DWORD objectType) {
         case OBJ_TYPE_SECTION:
         case OBJ_TYPE_DIRECTORY:
         case OBJ_TYPE_IO_COMPLETION:
-        case OBJ_TYPE_PIPE:
-            OBJECT_NAME_QUERY query = {0};
-            query.hObject = hObject;
-
             // NtQueryObject, no timeout
-            GetObjectNameGeneric(query);
-            return query.out;
+            return GetObjectNameGeneric(hObject);
     }
 
     return NULL;
@@ -80,7 +129,7 @@ char* GetObjectNameGeneric(HANDLE hObject) {
     }
 
     if (status != STATUS_SUCCESS) {
-        printf("[dbg] NtQueryObject failed with NTSTATUS %X\n", status);
+        //printf("[dbg] NtQueryObject failed with NTSTATUS %X\n", status);
         return FALSE;
     }
 
@@ -93,16 +142,4 @@ char* GetObjectNameGeneric(HANDLE hObject) {
 
     free(info);
     return name;
-}
-
-char* GetObjectNameWithTimeout(HANDLE hObject, DWORD dwMilliseconds) {
-    OBJECT_NAME_QUERY query = {0};
-    query.hObject = hObject;
-    HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)GetObjectNameGeneric, &query, 0, NULL);
-    WaitForSingleObject(hThread, dwMilliseconds);
-    return query.out;
-}
-
-void GetObjectName2(OBJECT_NAME_QUERY* query) {
-    query.out = GetObjectNameGeneric(query.hObject)
 }
