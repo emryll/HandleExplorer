@@ -29,7 +29,7 @@ func GetGlobalHandleTable() []HandleEntry {
 	for _, v := range cSlice {
 		handleTable = append(handleTable, v.GoEntry())
 	}
-	C.free(unsafe.Pointer(cHandleEntries))
+	C.FreeHandleTable(cHandleEntries)
 	return handleTable
 }
 
