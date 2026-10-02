@@ -10,18 +10,10 @@ static std::unordered_map<LPVOID, ObjectInfo*> ObjectInfoTracker;
 static std::mutex ObjectInfoTrackerLock;
 
 extern "C" {
-    void FreeObjectInfoEntry(ObjectInfo* entry) {
-        if (entry == NULL) return;
-
-        if (entry->Parameters != NULL) {
-            free(entry->Parameters);
-        }
-        free(entry);
-    }
-
     // Reset the object info tracker state and free all entries.
     // This should be called every time you refresh handle data.
     void ResetObjectInfoTracker() {
+        std::lock_guard<std::mutex> lock(ObjectInfoTrackerLock);
         for (auto& [address, entry] : ObjectInfoTracker) {
             FreeObjectInfoEntry(entry);
         }
@@ -67,5 +59,14 @@ extern "C" {
             return NULL;
         }
         return entry;
+    }
+    
+    void FreeObjectInfoEntry(ObjectInfo* entry) {
+        if (entry == NULL) return;
+
+        if (entry->Parameters != NULL) {
+            free(entry->Parameters);
+        }
+        free(entry);
     }
 }
