@@ -13,7 +13,12 @@ import (
 	"unsafe"
 )
 
-// Get global handle table. Note that this is heavy; in the ballpark of 1000ms+
+//?==================================================================================+
+//?   This file implements the Go wrapper for querying handle data (see handles.c)   |
+//?==================================================================================+
+
+// Query the global handle table.
+// Note that this is heavy, taking several seconds.
 func GetGlobalHandleTable() []HandleEntry {
 	hb := profiler.GetBenchmarker("HandleTable")
 	if hb != nil {
@@ -33,6 +38,7 @@ func GetGlobalHandleTable() []HandleEntry {
 	return handleTable
 }
 
+// Convert a handle entry (for HC) to an access entry (for OAR)
 func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
 	var entry registry.AccessEntry
 	entry.Object = h.Type
@@ -42,13 +48,8 @@ func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
 	entry.Access = (utils.Bitmask)(h.Access)
 	entry.Address = h.Address
 
+	//* object display name
 	switch entry.Object {
-	case nt.OBJ_TYPE_PROCESS:
-		pathParam := h.GetParameter("ImagePath")
-		if !pathParam.Empty() {
-			entry.Name = h.Parameters["ImagePath"].GetValue().(string)
-			entry.Params["ImagePath"] = pathParam
-		}
 	case nt.OBJ_TYPE_THREAD:
 		var name string
 		tidParam := h.GetParameter("Tid")
