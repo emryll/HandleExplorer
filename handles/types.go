@@ -7,6 +7,8 @@ import (
 
 //*=========================[ Handles ]===========================
 
+const MAX_PARAMS_SIZE = 0x1000
+
 type cHandleEntry struct {
 	FirstSeen  int64
 	LastSeen   int64
