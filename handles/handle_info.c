@@ -21,30 +21,60 @@ BYTE* GetProcessObjectExtraParams(HANDLE hProcess, size_t* paramsSize) {
 }
 
 BYTE* GetThreadObjectExtraParams(HANDLE hThread, size_t* paramsSize) {
-    size_t tidParamSize;
-    size_t pidParamSize;
+    size_t pathParamSize = 0;
+    size_t pidParamSize  = 0;
+    size_t tidParamSize  = 0;
     *paramsSize = 0;
 
     DWORD tid = GetThreadId(hThread);
     BYTE* tidParam = BuildParameter(&tidParamSize, PARAMETER_UINT32, "Tid", tid);
+    if (tidParam != NULL) *paramsSize += tidParamSize;
 
     DWORD pid = GetProcessIdOfThread(hThread);
-    BYTE* pidParam = BuildParameter(&pidParamSize, PARAMETER_UINT32, "Pid",pid);
+    BYTE* pidParam = BuildParameter(&pidParamSize, PARAMETER_UINT32, "Pid", pid);
+    if (pidParam != NULL) *paramsSize += pidParamSize;
 
-    if (pidParam != NULL && tidParam != NULL) {
-        BYTE* parameters = (BYTE*)malloc(tidParamSize + pidParamSize);
-
-        memcpy(parameters, tidParam, tidParamSize);
-        memcpy(parameters + tidParamSize, pidParam, pidParamSize);
-        return parameters;
-
-    } else if (pidParam != NULL) {
-        return pidParam;
-
-    } else {
-        // doesnt matter if NULL
-        return tidParam;
+    BYTE* pathParam = NULL;
+    if (pid != 0) {
+        HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (hProcess != NULL) {
+            char* path = GetProcessImagePath(hProcess);
+            if (path != NULL) {
+                pathParam = BuildParameter(&pathParamSize, PARAMETER_ANSISTRING, "Path", path);
+                free(path);
+            }
+            CloseHandle(hProcess);
+        }
     }
+
+    *paramsSize = tidParamSize + pidParamSize + pathParamSize;
+    if (*paramsSize == 0) return NULL;
+
+    BYTE* parameters = (BYTE*)malloc(*paramsSize); 
+    if (parameters == NULL) {
+        if (tidParam != NULL) free(tidParam);
+        if (pidParam != NULL) free(pidParam);
+        if (pathParam != NULL) free(pathParam);
+        return NULL;
+    }
+
+    size_t cursor = 0;
+    if (tidParam != NULL) {
+        memcpy(parameters + cursor, tidParam, tidParamSize);
+        cursor += tidParamSize;
+        free(tidParam);
+    }
+    if (pidParam != NULL) {
+        memcpy(parameters + cursor, pidParam, pidParamSize);
+        cursor += pidParamSize;
+        free(pidParam);
+    }
+    if (pathParam != NULL) {
+        memcpy(parameters + cursor, pathParam, pathParamSize);
+        cursor += pathParamSize;
+        free(pathParam);
+    }
+    return parameters;
 }
 
 //*=========================[ Object Name Information ]==========================
