@@ -177,9 +177,11 @@ func PrintObject(w io.Writer, address uintptr) {
 		w = os.Stdout
 	}
 
-	yellow := color.New(color.FgHiYellow)
+	var (
+		yellow = color.New(color.FgHiYellow)
+		grey   = color.New(color.FgWhite)
+	)
 
-	//TODO: find the entry
 	store.AccessTracker.AccessRegistry.RLock()
 	sampleEntry := store.AccessTracker.AccessRegistry.FindObjectByAddress(address)
 	store.AccessTracker.AccessRegistry.RUnlock()
@@ -189,7 +191,8 @@ func PrintObject(w io.Writer, address uintptr) {
 
 	yellow.Fprintf(w, "%s", nt.GetTypeName(sampleEntry.Object))
 	fmt.Fprintf(w, " %s\n", utils.OrAnon(sampleEntry.Name))
-	fmt.Fprintf(w, "object address: 0x")
+	fmt.Fprintf(w, "object address: ")
+	grey.Fprintf(w, "0x")
 	yellow.Fprintf(w, "%x\n\n", address)
 
 	pids := store.AccessTracker.GetObjectAccessPids(address)
