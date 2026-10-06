@@ -63,8 +63,8 @@ func (h HandleEntry) ConvertToAccessEntry() registry.AccessEntry {
 				name += fmt.Sprintf(" (%s)", filepath.Base(processPath))
 			}
 		}
-
 		entry.Name = name
+
 	default:
 		nameParam := h.GetParameter("Name")
 		if !nameParam.Empty() {
