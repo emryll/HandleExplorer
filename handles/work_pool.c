@@ -18,40 +18,12 @@ void ExecuteHParamTask(HPARAM_TASK* task) {
     if (task == NULL) return;
 
     if (task->entry != NULL) {
-        ObjectInfo* infoEntry = LookupObjectInfo(task->entry->Address);
-    	
-        //* add object info once
-        if (infoEntry == NULL) {
-            size_t paramsSize;
-            BYTE* params = GetHandleParameters(
-                task->hObject,
-                task->entry->Type,
-                &paramsSize
-            );
-
-            if (params != NULL) {
-                ObjectInfo* newEntry = (ObjectInfo*)malloc(sizeof(ObjectInfo));
-                newEntry->Parameters = params;
-                newEntry->ParamsSize = paramsSize;
-
-                newEntry->Address = task->entry->Address;
-                newEntry->TypeId  = task->entry->Type;
-
-                //? here between lookup and add,
-                //? there is a data race happening.
-                //? Another entry could be added for it,
-                //? but the first one added must be used to
-                //? avoid lifetime issues causing UAF.
-                infoEntry = AddObjectInfoEntry(newEntry);
-            }
-        }
-        
-        //* fill handle entry params
-        if (infoEntry != NULL) {
-            task->entry->paramsSize = infoEntry->ParamsSize;
-            task->entry->Params = (BYTE*)malloc(infoEntry->ParamsSize);
-            memcpy(task->entry->Params, infoEntry->Parameters, infoEntry->ParamsSize);
-        }
+        task->entry->Params = GetHandleParameters(
+            task->hObject,
+            task->entry->Type,
+            task->entry->Address,
+            &task->entry->paramsSize
+        );
     }
 
     if (task->hObject != NULL && task->hObject != INVALID_HANDLE_VALUE) {
@@ -77,7 +49,7 @@ DWORD WINAPI HParamWorker(HP_TASK_QUEUE* queue) {
 // Create a handle parameter query task and add it to the queue.
 // If task creation and queueing succeeds, the return value is TRUE.
 BOOL CreateHpTask(HP_TASK_QUEUE* q, HANDLE hObject, HANDLE_ENTRY* entry) {
-    HPARAM_TASK* task = (HPARAM_TASK*)malloc(sizeof(HPARAM_TASK));
+    HPARAM_TASK* task = (HPARAM_TASK*)calloc(1, sizeof(HPARAM_TASK));
     if (!task) return FALSE;
 
     task->hObject    = hObject;
